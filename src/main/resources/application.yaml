@@ -1,0 +1,16 @@
+rest-template:
+  request-config:
+    connection-request-timeout: 120000  # timeout when requesting a connection from the connection manager
+    connect-timeout: 120000             # timeout until a connection is established
+    socket-timeout: 120000              # timeout for waiting for data
+
+  pooling-http-client-connection-manager:
+    max-total: 5 # Max number of connection to pool
+
+redis:
+  hostname: localhost
+  port: 6379
+
+kubernetes:
+  namespace: metrics
+  statefulset-name: data-influxdb
