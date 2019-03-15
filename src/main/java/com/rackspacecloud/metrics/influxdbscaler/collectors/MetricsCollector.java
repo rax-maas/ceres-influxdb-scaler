@@ -3,155 +3,218 @@ package com.rackspacecloud.metrics.influxdbscaler.collectors;
 import com.rackspacecloud.metrics.influxdbscaler.models.InfluxDBMetricsCollection;
 import com.rackspacecloud.metrics.influxdbscaler.models.PatchStatefulSetInput;
 import com.rackspacecloud.metrics.influxdbscaler.models.StatefulSetStatus;
+import com.rackspacecloud.metrics.influxdbscaler.models.routing.DatabasesSeriesCount;
 import com.rackspacecloud.metrics.influxdbscaler.models.routing.InfluxDBInstance;
 import com.rackspacecloud.metrics.influxdbscaler.models.routing.MaxAndMinSeriesInstances;
+import com.rackspacecloud.metrics.influxdbscaler.models.stats.InfluxDBInstanceStatsSummary;
 import com.rackspacecloud.metrics.influxdbscaler.providers.StatefulSetProvider;
+import com.rackspacecloud.metrics.influxdbscaler.repositories.DatabasesSeriesCountRepository;
 import com.rackspacecloud.metrics.influxdbscaler.repositories.MaxMinInstancesRepository;
 import com.rackspacecloud.metrics.influxdbscaler.repositories.RoutingInformationRepository;
-import lombok.Data;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.*;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class MetricsCollector {
-    @Data
-    public static class MaxAndMinSeriesCountInstances {
-        private InstanceSeriesCount max;
-        private InstanceSeriesCount min;
-
-        public MaxAndMinSeriesCountInstances(){
-            this.max = new InstanceSeriesCount("", Long.MIN_VALUE);
-            this.min = new InstanceSeriesCount("", Long.MAX_VALUE);
-        }
-    }
-
-    @Data
-    @RequiredArgsConstructor
-    public static class InstanceSeriesCount {
-        private String url;
-        private long seriesCount;
-
-        public InstanceSeriesCount(String url, long seriesCount) {
-            this.url = url;
-            this.seriesCount = seriesCount;
-        }
-    }
-
     private static final Logger LOGGER = LoggerFactory.getLogger(MetricsCollector.class);
 
-    private ConcurrentHashMap<String, List<InfluxDBMetricsCollection.InfluxDBMetrics>> concurrentInstanceStats;
-    private MaxAndMinSeriesCountInstances maxAndMinSeriesCountInstances;
-    private ConcurrentHashMap<String, Long> instanceSeriesMap;
+    private InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary;
+
+    /**
+     * instancesStats collects all of the stats for given InfluxDB instance using "show stats" api
+     */
+    private Map<String, List<InfluxDBMetricsCollection.InfluxDBMetrics>> instancesStats;
 
     private boolean scalingInProgress = false;
-
-    @Value("${kubernetes.namespace}")
     private String namespace;
-
-    @Value("${kubernetes.statefulset-name}")
     private String statefulSetName;
-    private static final long SERIES_THRESHOLD = 42;
+
+    private static final long SERIES_THRESHOLD = 500;
 
     private InfluxDBHelper influxDBHelper;
     private StatefulSetProvider statefulSetProvider;
     private RoutingInformationRepository routingInformationRepository;
     private MaxMinInstancesRepository maxMinInstancesRepository;
+    private DatabasesSeriesCountRepository databasesSeriesCountRepository;
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
 
-    @Autowired
-    public MetricsCollector(InfluxDBHelper influxDBHelper,
-                            StatefulSetProvider statefulSetProvider,
-                            RoutingInformationRepository routingInformationRepository,
-                            MaxMinInstancesRepository maxMinInstancesRepository) {
+    public MetricsCollector(
+            String namespace,
+            String statefulSetName,
+            InfluxDBHelper influxDBHelper,
+            StatefulSetProvider statefulSetProvider,
+            RoutingInformationRepository routingInformationRepository,
+            MaxMinInstancesRepository maxMinInstancesRepository,
+            DatabasesSeriesCountRepository databasesSeriesCountRepository,
+            InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary) {
+        this.namespace = namespace;
+        this.statefulSetName = statefulSetName;
         this.influxDBHelper = influxDBHelper;
         this.statefulSetProvider = statefulSetProvider;
         this.routingInformationRepository = routingInformationRepository;
         this.maxMinInstancesRepository = maxMinInstancesRepository;
+        this.databasesSeriesCountRepository = databasesSeriesCountRepository;
+        this.influxDBInstanceStatsSummary = influxDBInstanceStatsSummary;
 
-//        setInitialInfluxDBInstances();
+        setInitialInfluxDBInstances();
 
         initialize();
     }
 
-    // TODO: JUST FOR DEV/TEST PURPOSE
+    /**
+     * Get all of the InfluxDB URLs from the InfluxDB StatefulSet and add it to Redis database
+     */
     private void setInitialInfluxDBInstances(){
-        InfluxDBInstance instance = new InfluxDBInstance();
-        instance.setName("influxdb-0");
-        instance.setUrl("http://localhost:8086");
-
-        InfluxDBInstance instance1 = new InfluxDBInstance();
-        instance1.setName("influxdb-1");
-        instance1.setUrl("http://localhost:8087");
+//        // TODO: JUST FOR DEV/TEST PURPOSE
+//        InfluxDBInstance instance = new InfluxDBInstance();
+//        instance.setName("influxdb-0");
+//        instance.setUrl("http://localhost:8086");
+//
+//        InfluxDBInstance instance1 = new InfluxDBInstance();
+//        instance1.setName("influxdb-1");
+//        instance1.setUrl("http://localhost:8087");
 
         List<InfluxDBInstance> instances = new ArrayList<>();
-        instances.add(instance);
-        instances.add(instance1);
+
+        // Get all of the URLs from StatefulSet
+        StatefulSetStatus status = statefulSetProvider.getStatefulSetStatus(namespace, statefulSetName);
+
+        for(int i = 0; i < status.getReadyReplicas(); i++) {
+            String influxDBInstanceName = String.format("%s-%d", statefulSetName, i);
+            String url = String.format("http://%s:8086", influxDBInstanceName);
+            instances.add(new InfluxDBInstance(influxDBInstanceName, url));
+
+            LOGGER.info("Initializing with InfluxDB URL: [{}]", url);
+        }
 
         routingInformationRepository.saveAll(instances);
     }
 
     private void initialize() {
-//        // TODO: get URLs for the InfluxDB instances
-//        List<String> influxDBInstanceURLs = new ArrayList<>();
-//        influxDBInstanceURLs.add("http://localhost:8086");
+//        influxDBInstanceStatsSummary = new InfluxDBInstanceStatsSummary();
+        instancesStats = new HashMap<>();
 
-        Iterable<InfluxDBInstance> instances = routingInformationRepository.findAll();
-
-//        influxDBInstanceURLs.addAll(instances)
-
-        this.concurrentInstanceStats = new ConcurrentHashMap<>();
-        this.instanceSeriesMap = new ConcurrentHashMap<>();
-
-        instances.forEach( item -> {
-            concurrentInstanceStats.put(item.getUrl(), new ArrayList<>());
-            instanceSeriesMap.put(item.getUrl(), 0L);
+        routingInformationRepository.findAll().forEach( item -> {
+            String url = item.getUrl();
+            instancesStats.put(url, new ArrayList<>());
+            InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount instanceDatabasesSeriesCount =
+                    new InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount(-1L, new HashMap<>());
+            influxDBInstanceStatsSummary.getInstancesStatsMap().put(url, instanceDatabasesSeriesCount);
         });
     }
 
-    private List<String> getInfluxDBInstances() {
-        List<String> instances = new ArrayList<>();
-
-        return instances;
-    }
-
-    @Scheduled(cron = "*/10 * * * * *") // Run every 10 seconds
+    /**
+     * This is the entry method that collects all of the metrics for all of the InfluxDB instances in the system.
+     * @throws Exception
+     */
+    @Scheduled(cron = "*/3 * * * * *") // Run every 3 seconds
     public void collectInfluxDBMetrics() throws Exception {
         LOGGER.info("> start");
         LOGGER.info("Current time {}", Instant.now());
 
-        maxAndMinSeriesCountInstances = influxDBHelper.populateStats(concurrentInstanceStats, instanceSeriesMap);
+        influxDBHelper.populateStats(instancesStats, influxDBInstanceStatsSummary);
 
-        List<MaxAndMinSeriesInstances> maxAndMinSeriesInstances = new ArrayList<>();
-        maxAndMinSeriesInstances.add(new MaxAndMinSeriesInstances("MAX",
-                maxAndMinSeriesCountInstances.getMax().getUrl(),
-                maxAndMinSeriesCountInstances.getMax().getSeriesCount()));
+        String maxUrl = influxDBInstanceStatsSummary.getInstanceUrlWithMaxSeriesCount();
+        String minUrl = influxDBInstanceStatsSummary.getInstanceUrlWithMinSeriesCount();
 
-        maxAndMinSeriesInstances.add(new MaxAndMinSeriesInstances("MIN",
-                maxAndMinSeriesCountInstances.getMin().getUrl(),
-                maxAndMinSeriesCountInstances.getMin().getSeriesCount()));
+        saveMaxAndMinSeriesInfluxDBInstances(maxUrl, minUrl);
+        saveDatabasesSeriesCount();
 
-        maxMinInstancesRepository.saveAll(maxAndMinSeriesInstances);
+        String maxInstance = influxDBInstanceStatsSummary.getInstanceUrlWithMaxSeriesCount();
+        InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount instanceDatabasesSeriesCount =
+                influxDBInstanceStatsSummary.getInstancesStatsMap().get(maxInstance);
 
-        /**
-         * Once it breaches the threshold value, and scaling is not in process, then trigger
-         * scaling method in a different thread.
-         */
-        if(maxAndMinSeriesCountInstances.getMax().getSeriesCount() >= SERIES_THRESHOLD && !scalingInProgress) {
+        if(!scalingInProgress && instanceDatabasesSeriesCount.getTotalSeriesCount() > SERIES_THRESHOLD) {
             scalingInProgress = true;
-            scaleAsync();
+//            scaleAsync();
+            List<String> databasesToMoveOut = splitInstanceLoad(instanceDatabasesSeriesCount);
+
+            List<String[]> tenantIdAndMeasurementPairs =
+                    influxDBHelper.getTenantIdAndMeasurementList(maxInstance, databasesToMoveOut);
+
+            scalingInProgress = false;
         }
 
-        LOGGER.info("Total series count {}", instanceSeriesMap.get("http://localhost:8086"));
-
         LOGGER.info("< end");
+    }
+
+    private void saveDatabasesSeriesCount() {
+        Map<String, InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount> instancesStats =
+                influxDBInstanceStatsSummary.getInstancesStatsMap();
+
+        List<DatabasesSeriesCount> databasesSeriesCountRecords = new ArrayList<>();
+
+        for(String url : instancesStats.keySet()) {
+            InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount instanceDatabasesSeriesCount =
+                    instancesStats.get(url);
+            DatabasesSeriesCount databasesSeriesCount = new DatabasesSeriesCount(url,
+                    instanceDatabasesSeriesCount.getTotalSeriesCount(),
+                    instanceDatabasesSeriesCount.getDatabaseSeriesCountMap());
+
+            LOGGER.info("Total series count in [{}] is [{}]", url, instanceDatabasesSeriesCount.getTotalSeriesCount());
+
+            databasesSeriesCountRecords.add(databasesSeriesCount);
+        }
+
+        databasesSeriesCountRepository.saveAll(databasesSeriesCountRecords);
+    }
+
+    private void saveMaxAndMinSeriesInfluxDBInstances(String maxUrl, String minUrl) {
+        List<MaxAndMinSeriesInstances> maxAndMinSeriesInstances = new ArrayList<>();
+        maxAndMinSeriesInstances.add(new MaxAndMinSeriesInstances("MAX",
+                maxUrl, influxDBInstanceStatsSummary.getInstancesStatsMap().get(maxUrl).getTotalSeriesCount()));
+
+        maxAndMinSeriesInstances.add(new MaxAndMinSeriesInstances("MIN",
+                minUrl, influxDBInstanceStatsSummary.getInstancesStatsMap().get(minUrl).getTotalSeriesCount()));
+
+        maxMinInstancesRepository.saveAll(maxAndMinSeriesInstances);
+    }
+
+    private void getTenantIdAndMeasurementListToReroute(
+            String instanceUrl, List<String> databaseToMoveOut) throws Exception {
+        influxDBHelper.getTenantIdAndMeasurementList(instanceUrl, databaseToMoveOut);
+    }
+
+
+    private List<String> splitInstanceLoad(
+            InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount instanceDatabasesSeriesCount) {
+        long targetSeriesCount = instanceDatabasesSeriesCount.getTotalSeriesCount()/2;
+        Map<String, Long> databaseSeriesCount = instanceDatabasesSeriesCount.getDatabaseSeriesCountMap();
+
+        List<Map.Entry<String, Long>> entries = new ArrayList<>(databaseSeriesCount.entrySet());
+
+        entries.removeIf(entry -> !entry.getKey().startsWith("db_"));
+
+        System.out.println(entries);
+
+        entries.sort(new Comparator<Map.Entry<String, Long>>() {
+            @Override
+            public int compare(Map.Entry<String, Long> o1, Map.Entry<String, Long> o2) {
+                return -1 * (o1.getValue().compareTo(o2.getValue()));
+            }
+        });
+
+        System.out.println(entries);
+
+        long tempTotal = 0L;
+        List<String> databaseGroupToMoveOut = new ArrayList<>();
+        for(int i = 0; i < entries.size(); i++) {
+            Map.Entry<String, Long> entry = entries.get(i);
+            tempTotal += entry.getValue();
+
+            if(tempTotal > targetSeriesCount) break;
+
+            databaseGroupToMoveOut.add(entry.getKey());
+        }
+
+        return databaseGroupToMoveOut;
     }
 
     private void scaleAsync() throws InterruptedException, ExecutionException {
@@ -163,13 +226,11 @@ public class MetricsCollector {
         PatchStatefulSetInput patchStatefulSetInput = new PatchStatefulSetInput();
         patchStatefulSetInput.setOp("replace");
         patchStatefulSetInput.setPath("/spec/replicas");
-        patchStatefulSetInput.setValue(status.getReplicas() + 2);
+        patchStatefulSetInput.setValue(2);
 
         statefulSetProvider.setBodyToPatch(new PatchStatefulSetInput[] {patchStatefulSetInput});
 
         Future<String> result = executorService.submit(statefulSetProvider);
         System.out.println(result.get());
-
-        scalingInProgress = false;
     }
 }

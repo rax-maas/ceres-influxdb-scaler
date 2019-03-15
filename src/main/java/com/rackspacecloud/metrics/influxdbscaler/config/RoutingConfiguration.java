@@ -1,6 +1,5 @@
 package com.rackspacecloud.metrics.influxdbscaler.config;
 
-import com.rackspacecloud.metrics.influxdbscaler.repositories.RoutingInformationRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,11 +22,6 @@ public class RoutingConfiguration {
     RedisStandaloneConfiguration redisStandaloneConfiguration(){
         return new RedisStandaloneConfiguration(hostName, port);
     }
-
-//    @Bean
-//    RoutingInformationRepository routingInformationRepository() {
-//        return new Routing
-//    }
 
     @Bean
     LettuceConnectionFactory redisConnectionFactory(){

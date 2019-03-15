@@ -65,6 +65,16 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-core</artifactId>
+			<version>RELEASE</version>
+		</dependency>
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-registry-influx</artifactId>
+			<version>1.1.2</version>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -73,7 +83,30 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+			<plugin>
+				<groupId>com.google.cloud.tools</groupId>
+				<artifactId>jib-maven-plugin</artifactId>
+				<version>1.0.0</version>
+				<configuration>
+					<to>
+						<image>${docker.image.prefix}/influxdb-scaler</image>
+						<tags>
+							<tag>${project.version}</tag>
+							<tag>${env.SHORT_SHA}</tag>
+							<tag>${env.BRANCH_NAME}</tag>
+						</tags>
+					</to>
+				</configuration>
+			</plugin>
+			<plugin>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>2.22.1</version>
+				<configuration>
+					<!-- disabling this to resolve build issue on Linux:
+                    Error: Could not find or load main class org.apache.maven.surefire.booter.ForkedBooter -->
+					<useSystemClassLoader>false</useSystemClassLoader>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
-
 </project>

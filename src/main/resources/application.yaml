@@ -1,3 +1,11 @@
+
+---
+spring:
+  profiles: development
+
+server:
+  port: 8083
+
 rest-template:
   request-config:
     connection-request-timeout: 120000  # timeout when requesting a connection from the connection manager
@@ -14,3 +22,51 @@ redis:
 kubernetes:
   namespace: metrics
   statefulset-name: data-influxdb
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,jolokia,metrics"
+  metrics:
+    export:
+      influx:
+        db: ceres
+        uri: ${INFLUXDB_METRICS_URL}
+        auto-create-db: true
+
+---
+spring:
+  profiles: production
+
+server:
+  port: 8080
+
+rest-template:
+  request-config:
+    connection-request-timeout: 120000  # timeout when requesting a connection from the connection manager
+    connect-timeout: 120000             # timeout until a connection is established
+    socket-timeout: 120000              # timeout for waiting for data
+
+  pooling-http-client-connection-manager:
+    max-total: 5 # Max number of connection to pool
+
+redis:
+  hostname: ${REDIS_HOSTNAME}
+  port: ${REDIS_PORT}
+
+kubernetes:
+  namespace: ${KUBERNETES_NAMESPACE}
+  statefulset-name: ${KUBERNETES_STATEFULSET_NAME}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,jolokia,metrics"
+  metrics:
+    export:
+      influx:
+        db: ceres
+        uri: ${INFLUXDB_METRICS_URL}
+        auto-create-db: true

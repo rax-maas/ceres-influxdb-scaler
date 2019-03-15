@@ -33,7 +33,8 @@ public class StatefulSetProvider implements Callable<String> {
     }
 
     private void initialize() throws IOException {
-        apiClient = Config.fromConfig("/Users/mrit1806/.kube/config");
+//        apiClient = Config.fromConfig("/Users/mrit1806/.kube/config");
+        apiClient = Config.defaultClient();
         Configuration.setDefaultApiClient(apiClient);
 
 ////        ApiClient defaultClient = Configuration.getDefaultApiClient();
@@ -59,6 +60,24 @@ public class StatefulSetProvider implements Callable<String> {
             return null;
         }
     }
+
+//    public void getStatefulSetInstances(String namespace, String statefulSetName) {
+//        AppsV1Api apiInstance = new AppsV1Api(apiClient);
+//        String pretty = "true";
+//
+//        try {
+//            V1StatefulSet result = apiInstance.readNamespacedStatefulSet(
+//                    statefulSetName, namespace, pretty, null, null);
+//
+//            System.out.println(result);
+//
+//
+////            return result.toString();
+//        } catch (ApiException e) {
+//            LOGGER.error(e.getMessage(), e);
+////            return e.getLocalizedMessage();
+//        }
+//    }
 
     @Override
     public String call() throws Exception {
