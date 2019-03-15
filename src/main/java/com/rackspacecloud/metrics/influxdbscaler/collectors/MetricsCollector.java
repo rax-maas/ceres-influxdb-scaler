@@ -35,6 +35,7 @@ public class MetricsCollector {
     private boolean scalingInProgress = false;
     private String namespace;
     private String statefulSetName;
+    private String headlessServiceName;
 
     private static final long SERIES_THRESHOLD = 500;
 
@@ -48,6 +49,7 @@ public class MetricsCollector {
     public MetricsCollector(
             String namespace,
             String statefulSetName,
+            String headlessServiceName,
             InfluxDBHelper influxDBHelper,
             StatefulSetProvider statefulSetProvider,
             RoutingInformationRepository routingInformationRepository,
@@ -56,6 +58,7 @@ public class MetricsCollector {
             InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary) {
         this.namespace = namespace;
         this.statefulSetName = statefulSetName;
+        this.headlessServiceName = headlessServiceName;
         this.influxDBHelper = influxDBHelper;
         this.statefulSetProvider = statefulSetProvider;
         this.routingInformationRepository = routingInformationRepository;
@@ -81,6 +84,8 @@ public class MetricsCollector {
 //        instance1.setName("influxdb-1");
 //        instance1.setUrl("http://localhost:8087");
 
+//        http://data-influxdb-0.influxdbsvc:8086
+
         List<InfluxDBInstance> instances = new ArrayList<>();
 
         // Get all of the URLs from StatefulSet
@@ -88,7 +93,7 @@ public class MetricsCollector {
 
         for(int i = 0; i < status.getReadyReplicas(); i++) {
             String influxDBInstanceName = String.format("%s-%d", statefulSetName, i);
-            String url = String.format("http://%s:8086", influxDBInstanceName);
+            String url = String.format("http://%s.%s:8086", influxDBInstanceName, headlessServiceName);
             instances.add(new InfluxDBInstance(influxDBInstanceName, url));
 
             LOGGER.info("Initializing with InfluxDB URL: [{}]", url);

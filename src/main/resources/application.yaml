@@ -22,6 +22,7 @@ redis:
 kubernetes:
   namespace: metrics
   statefulset-name: data-influxdb
+  headless-service-name: influxdbsvc
 
 management:
   endpoints:
@@ -58,15 +59,16 @@ redis:
 kubernetes:
   namespace: ${KUBERNETES_NAMESPACE}
   statefulset-name: ${KUBERNETES_STATEFULSET_NAME}
+  headless-service-name: ${KUBERNETES_HEADLESS_SERVICE_NAME}
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: "health,jolokia,metrics"
-  metrics:
-    export:
-      influx:
-        db: ceres
-        uri: ${INFLUXDB_METRICS_URL}
-        auto-create-db: true
+#management:
+#  endpoints:
+#    web:
+#      exposure:
+#        include: "health,jolokia,metrics"
+#  metrics:
+#    export:
+#      influx:
+#        db: ceres
+#        uri: ${INFLUXDB_METRICS_URL}
+#        auto-create-db: true

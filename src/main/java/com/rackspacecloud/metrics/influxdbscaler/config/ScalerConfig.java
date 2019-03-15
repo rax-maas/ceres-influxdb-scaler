@@ -11,12 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.redis.repository.configuration.EnableRedisRepositories;
 import org.springframework.scheduling.annotation.EnableScheduling;
-
-import javax.naming.ConfigurationException;
-import java.util.HashMap;
-import java.util.Map;
 
 @Configuration
 @EnableScheduling
@@ -26,6 +21,9 @@ public class ScalerConfig {
 
     @Value("${kubernetes.statefulset-name}")
     private String statefulSetName;
+
+    @Value("${kubernetes.headless-service-name}")
+    private String headlessServiceName;
 
     @Bean
     public InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary() {
@@ -44,6 +42,7 @@ public class ScalerConfig {
         return new MetricsCollector(
                 namespace,
                 statefulSetName,
+                headlessServiceName,
                 influxDBHelper,
                 statefulSetProvider,
                 routingInformationRepository,
