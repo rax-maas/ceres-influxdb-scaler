@@ -22,7 +22,7 @@ redis:
 kubernetes:
   namespace: metrics
   statefulset-name: data-influxdb
-  headless-service-name: influxdbsvc
+  headless-service-name: ""
 
 management:
   endpoints:

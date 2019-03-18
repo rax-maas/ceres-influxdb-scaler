@@ -37,7 +37,7 @@ public class MetricsCollector {
     private String statefulSetName;
     private String headlessServiceName;
 
-    private static final long SERIES_THRESHOLD = 500;
+    private static final long SERIES_THRESHOLD = 10000;
 
     private InfluxDBHelper influxDBHelper;
     private StatefulSetProvider statefulSetProvider;
@@ -55,7 +55,8 @@ public class MetricsCollector {
             RoutingInformationRepository routingInformationRepository,
             MaxMinInstancesRepository maxMinInstancesRepository,
             DatabasesSeriesCountRepository databasesSeriesCountRepository,
-            InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary) {
+            InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary,
+            boolean isLocal) {
         this.namespace = namespace;
         this.statefulSetName = statefulSetName;
         this.headlessServiceName = headlessServiceName;
@@ -66,7 +67,7 @@ public class MetricsCollector {
         this.databasesSeriesCountRepository = databasesSeriesCountRepository;
         this.influxDBInstanceStatsSummary = influxDBInstanceStatsSummary;
 
-        setInitialInfluxDBInstances();
+        setInitialInfluxDBInstances(isLocal);
 
         initialize();
     }
@@ -74,32 +75,53 @@ public class MetricsCollector {
     /**
      * Get all of the InfluxDB URLs from the InfluxDB StatefulSet and add it to Redis database
      */
-    private void setInitialInfluxDBInstances(){
-//        // TODO: JUST FOR DEV/TEST PURPOSE
-//        InfluxDBInstance instance = new InfluxDBInstance();
-//        instance.setName("influxdb-0");
-//        instance.setUrl("http://localhost:8086");
-//
-//        InfluxDBInstance instance1 = new InfluxDBInstance();
-//        instance1.setName("influxdb-1");
-//        instance1.setUrl("http://localhost:8087");
-
-//        http://data-influxdb-0.influxdbsvc:8086
-
+    private void setInitialInfluxDBInstances(boolean isLocal){
         List<InfluxDBInstance> instances = new ArrayList<>();
+
+        if(isLocal) {
+            populateInstances(instances);
+        }
+        else {
+            populateWithLatestInstances(instances);
+        }
+
+        routingInformationRepository.saveAll(instances);
+    }
+
+    public void populateWithLatestInstances(List<InfluxDBInstance> instances) {
+        //        http://data-influxdb-0.influxdbsvc:8086
 
         // Get all of the URLs from StatefulSet
         StatefulSetStatus status = statefulSetProvider.getStatefulSetStatus(namespace, statefulSetName);
 
         for(int i = 0; i < status.getReadyReplicas(); i++) {
             String influxDBInstanceName = String.format("%s-%d", statefulSetName, i);
-            String url = String.format("http://%s.%s:8086", influxDBInstanceName, headlessServiceName);
+
+            String url = String.format("http://%s:8086", influxDBInstanceName);
+            if(headlessServiceName != null && !headlessServiceName.isEmpty()) {
+                url = String.format("http://%s.%s:8086", influxDBInstanceName, headlessServiceName);
+            }
             instances.add(new InfluxDBInstance(influxDBInstanceName, url));
 
             LOGGER.info("Initializing with InfluxDB URL: [{}]", url);
         }
+    }
 
-        routingInformationRepository.saveAll(instances);
+    /**
+     * This is for dev/test env
+     * @param instances
+     */
+    private void populateInstances(List<InfluxDBInstance> instances) {
+        InfluxDBInstance instance = new InfluxDBInstance();
+        instance.setName("influxdb-0");
+        instance.setUrl("http://localhost:8086");
+
+        InfluxDBInstance instance1 = new InfluxDBInstance();
+        instance1.setName("influxdb-1");
+        instance1.setUrl("http://localhost:8087");
+
+        instances.add(instance);
+        instances.add(instance1);
     }
 
     private void initialize() {
@@ -119,7 +141,7 @@ public class MetricsCollector {
      * This is the entry method that collects all of the metrics for all of the InfluxDB instances in the system.
      * @throws Exception
      */
-    @Scheduled(cron = "*/3 * * * * *") // Run every 3 seconds
+    @Scheduled(cron = "*/10 * * * * *") // Run every 10 seconds
     public void collectInfluxDBMetrics() throws Exception {
         LOGGER.info("> start");
         LOGGER.info("Current time {}", Instant.now());
@@ -138,7 +160,10 @@ public class MetricsCollector {
 
         if(!scalingInProgress && instanceDatabasesSeriesCount.getTotalSeriesCount() > SERIES_THRESHOLD) {
             scalingInProgress = true;
-//            scaleAsync();
+
+            // Scale InfluxDB StatefulSet
+            scaleAsync();
+
             List<String> databasesToMoveOut = splitInstanceLoad(instanceDatabasesSeriesCount);
 
             List<String[]> tenantIdAndMeasurementPairs =
@@ -148,6 +173,12 @@ public class MetricsCollector {
         }
 
         LOGGER.info("< end");
+    }
+
+    public String getMinSeriesCountInstance() throws Exception {
+        influxDBHelper.populateStats(instancesStats, influxDBInstanceStatsSummary);
+
+        return influxDBInstanceStatsSummary.getInstanceUrlWithMinSeriesCount();
     }
 
     private void saveDatabasesSeriesCount() {
@@ -171,8 +202,21 @@ public class MetricsCollector {
         databasesSeriesCountRepository.saveAll(databasesSeriesCountRecords);
     }
 
-    private void saveMaxAndMinSeriesInfluxDBInstances(String maxUrl, String minUrl) {
+    private void saveMaxAndMinSeriesInfluxDBInstances(String maxUrl, String minUrl) throws Exception {
         List<MaxAndMinSeriesInstances> maxAndMinSeriesInstances = new ArrayList<>();
+
+        if(influxDBInstanceStatsSummary == null)
+            throw new Exception("influxDBInstanceStatsSummary is null");
+
+        if(influxDBInstanceStatsSummary.getInstancesStatsMap() == null)
+            throw new Exception("influxDBInstanceStatsSummary.getInstancesStatsMap() is null");
+
+        if(influxDBInstanceStatsSummary.getInstancesStatsMap().get(maxUrl) == null)
+            throw new Exception("influxDBInstanceStatsSummary.getInstancesStatsMap().get(maxUrl) is null");
+
+        if(influxDBInstanceStatsSummary.getInstancesStatsMap().get(minUrl) == null)
+            throw new Exception("influxDBInstanceStatsSummary.getInstancesStatsMap().get(minUrl) is null");
+
         maxAndMinSeriesInstances.add(new MaxAndMinSeriesInstances("MAX",
                 maxUrl, influxDBInstanceStatsSummary.getInstancesStatsMap().get(maxUrl).getTotalSeriesCount()));
 
@@ -222,7 +266,7 @@ public class MetricsCollector {
         return databaseGroupToMoveOut;
     }
 
-    private void scaleAsync() throws InterruptedException, ExecutionException {
+    private void scaleAsync() throws Exception {
         statefulSetProvider.setNamespace(namespace);
         statefulSetProvider.setName(statefulSetName);
 
@@ -231,11 +275,15 @@ public class MetricsCollector {
         PatchStatefulSetInput patchStatefulSetInput = new PatchStatefulSetInput();
         patchStatefulSetInput.setOp("replace");
         patchStatefulSetInput.setPath("/spec/replicas");
-        patchStatefulSetInput.setValue(2);
+        patchStatefulSetInput.setValue(status.getReplicas() + 2);
 
         statefulSetProvider.setBodyToPatch(new PatchStatefulSetInput[] {patchStatefulSetInput});
 
-        Future<String> result = executorService.submit(statefulSetProvider);
-        System.out.println(result.get());
+        statefulSetProvider.call();
+
+//        Future<String> result = executorService.submit(statefulSetProvider);
+//        System.out.println(result.get());
+
+//        setInitialInfluxDBInstances(false);
     }
 }

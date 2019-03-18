@@ -13,14 +13,12 @@ import io.kubernetes.client.util.Config;
 import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.concurrent.Callable;
 
-@Service
 @Data
-public class StatefulSetProvider implements Callable<String> {
+public class StatefulSetProvider { //implements Callable<String>
     private static final Logger LOGGER = LoggerFactory.getLogger(StatefulSetProvider.class);
 
     private String namespace;
@@ -28,18 +26,15 @@ public class StatefulSetProvider implements Callable<String> {
     private PatchStatefulSetInput[] bodyToPatch;
     private ApiClient apiClient;
 
-    public StatefulSetProvider() throws IOException {
-        initialize();
-    }
-
-    private void initialize() throws IOException {
-//        apiClient = Config.fromConfig("/Users/mrit1806/.kube/config");
-        apiClient = Config.defaultClient();
-        Configuration.setDefaultApiClient(apiClient);
-
-////        ApiClient defaultClient = Configuration.getDefaultApiClient();
-//        ApiClient defaultClient = Config.defaultClient();
-//        defaultClient.setBasePath("https://35.232.10.27");
+    public StatefulSetProvider(boolean isLocal) throws IOException {
+        if(isLocal) {
+            apiClient = Config.fromConfig("/Users/mrit1806/.kube/config");
+            Configuration.setDefaultApiClient(apiClient);
+        }
+        else {
+            apiClient = Config.fromCluster();
+            Configuration.setDefaultApiClient(apiClient);
+        }
     }
 
     public StatefulSetStatus getStatefulSetStatus(final String namespace, final String name) {
@@ -56,7 +51,7 @@ public class StatefulSetProvider implements Callable<String> {
                     status.getUpdatedReplicas() == null ? 0 : status.getUpdatedReplicas().intValue()
             );
         } catch (ApiException e) {
-            LOGGER.error(e.getMessage(), e);
+            LOGGER.error(e.getResponseBody());
             return null;
         }
     }
@@ -79,7 +74,7 @@ public class StatefulSetProvider implements Callable<String> {
 //        }
 //    }
 
-    @Override
+//    @Override
     public String call() throws Exception {
         if(namespace == null || namespace == "") throw new Exception("namespace is null or empty");
         if(name == null || name == "") throw new Exception("statefulset name is null or empty");
@@ -94,11 +89,11 @@ public class StatefulSetProvider implements Callable<String> {
 
             int statusCheckCount = 0;
             StatefulSetStatus status = null;
-            while(statusCheckCount < 30) {
+            while(statusCheckCount < 60) {
                 status = getStatefulSetStatus(namespace, name);
                 if(status.getReadyReplicas() == status.getReplicas()) break;
 
-                Thread.sleep(1000);
+                Thread.sleep(5000);
             }
 
             if(status == null || status.getReadyReplicas() != status.getReplicas())
@@ -106,7 +101,7 @@ public class StatefulSetProvider implements Callable<String> {
 
             return result.toString();
         } catch (ApiException e) {
-            LOGGER.error(e.getMessage(), e);
+            LOGGER.error(e.getResponseBody());
             return e.getLocalizedMessage();
         }
     }
