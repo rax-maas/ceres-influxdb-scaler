@@ -33,8 +33,8 @@ public class InfluxDBHelper {
             final Map<String, List<InfluxDBMetricsCollection.InfluxDBMetrics>> instancesStats,
             final InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary) throws Exception {
 
-        long maxSeriesCount = Long.MIN_VALUE; // Initialize max
-        long minSeriesCount = Long.MAX_VALUE; // Initialize min
+        long maxSeriesCountPercentageGrowth = Long.MIN_VALUE; // Initialize max
+        long minSeriesCountPercentageGrowth = Long.MAX_VALUE; // Initialize min
 
         for(String baseUrl : instancesStats.keySet()) {
             String queryString = "q=SHOW STATS";
@@ -59,16 +59,18 @@ public class InfluxDBHelper {
                 populateSeriesCountForTheInstance(seriesMetricCollection,
                         instanceMetricsList, instanceDatabasesSeriesCount);
 
+                long seriesCountPercentageGrowth = instanceDatabasesSeriesCount.getSeriesCountPercentageGrowth();
+
                 if(influxDBInstanceStatsSummary.getInstanceUrlWithMaxSeriesCount().equals("") ||
-                        instanceDatabasesSeriesCount.getTotalSeriesCount() >= maxSeriesCount) {
+                        seriesCountPercentageGrowth >= maxSeriesCountPercentageGrowth) {
                     influxDBInstanceStatsSummary.setInstanceUrlWithMaxSeriesCount(baseUrl);
-                    maxSeriesCount = instanceDatabasesSeriesCount.getTotalSeriesCount();
+                    maxSeriesCountPercentageGrowth = seriesCountPercentageGrowth;
                 }
 
                 if(influxDBInstanceStatsSummary.getInstanceUrlWithMinSeriesCount().equals("") ||
-                        instanceDatabasesSeriesCount.getTotalSeriesCount() < minSeriesCount) {
+                        seriesCountPercentageGrowth < minSeriesCountPercentageGrowth) {
                     influxDBInstanceStatsSummary.setInstanceUrlWithMinSeriesCount(baseUrl);
-                    minSeriesCount = instanceDatabasesSeriesCount.getTotalSeriesCount();
+                    minSeriesCountPercentageGrowth = seriesCountPercentageGrowth;
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -173,7 +175,7 @@ public class InfluxDBHelper {
             influxDBMetricsList.add(metric);
         }
 
-        instanceDatabasesSeriesCount.setTotalSeriesCount(totalSeriesCount);
+        instanceDatabasesSeriesCount.addToTotalSeriesCountArray(totalSeriesCount);
     }
 
     private ResponseEntity<String> getResponseEntity(String baseUrl, String queryString) {

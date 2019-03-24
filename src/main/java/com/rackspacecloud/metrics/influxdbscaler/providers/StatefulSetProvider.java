@@ -15,10 +15,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.concurrent.Callable;
 
 @Data
-public class StatefulSetProvider { //implements Callable<String>
+public class StatefulSetProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(StatefulSetProvider.class);
 
     private String namespace;

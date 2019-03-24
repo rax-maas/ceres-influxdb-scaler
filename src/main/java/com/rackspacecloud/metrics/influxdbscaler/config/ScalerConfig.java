@@ -28,6 +28,9 @@ public class ScalerConfig {
     @Value("${kubernetes.headless-service-name}")
     private String headlessServiceName;
 
+    @Value("${total-series-count.iterations}")
+    private int totalSeriesCountIterations;
+
     @Bean
     public InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary() {
         return new InfluxDBInstanceStatsSummary();
@@ -53,6 +56,7 @@ public class ScalerConfig {
                 maxMinInstancesRepository,
                 databasesSeriesCountRepository,
                 influxDBInstanceStatsSummary,
+                totalSeriesCountIterations,
                 false
         );
     }
@@ -77,6 +81,7 @@ public class ScalerConfig {
                 maxMinInstancesRepository,
                 databasesSeriesCountRepository,
                 influxDBInstanceStatsSummary,
+                totalSeriesCountIterations,
                 true
         );
     }

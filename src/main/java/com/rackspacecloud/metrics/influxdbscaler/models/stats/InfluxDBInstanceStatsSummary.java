@@ -49,18 +49,46 @@ public class InfluxDBInstanceStatsSummary {
     @RequiredArgsConstructor
     public static class InstanceDatabasesSeriesCount {
         /**
-         * Total series count in a given InfluxDB instance
+         * Collection of total series count in a given InfluxDB instance for given iteration
          */
-        long totalSeriesCount;
+        long[] totalSeriesCountArray;
+
+        long latestTotalSeriesCount;
+
+        private int writeIndex;
+
+        private long seriesCountPercentageGrowth;
 
         /**
          * Map of databaseName and their corresponding series count
          */
         Map<String, Long> databaseSeriesCountMap;
 
-        public InstanceDatabasesSeriesCount(long totalSeriesCount, Map<String, Long> databaseSeriesCountMap) {
-            this.totalSeriesCount = totalSeriesCount;
+        public InstanceDatabasesSeriesCount(long[] totalSeriesCountArray, Map<String, Long> databaseSeriesCountMap) {
+            this.writeIndex = 0;
+            this.seriesCountPercentageGrowth = 0;
+            this.totalSeriesCountArray = totalSeriesCountArray;
             this.databaseSeriesCountMap = databaseSeriesCountMap;
+        }
+
+        /**
+         * Add total series count to the circular array collection
+         * @param totalSeriesCount
+         */
+        public void addToTotalSeriesCountArray(long totalSeriesCount) {
+            int latestIndex = writeIndex;
+            totalSeriesCountArray[writeIndex++] = totalSeriesCount;
+            latestTotalSeriesCount = totalSeriesCount;
+
+            if(writeIndex == totalSeriesCountArray.length) writeIndex = 0;
+
+            int oldestIndex = writeIndex; // Now since writeIndex has moved to next one
+
+            long diff = totalSeriesCountArray[latestIndex] - totalSeriesCountArray[oldestIndex];
+
+            if(diff > 0 && totalSeriesCountArray[oldestIndex] > 0) {
+                seriesCountPercentageGrowth = (diff * 100) / totalSeriesCountArray[oldestIndex];
+            }
         }
     }
 }

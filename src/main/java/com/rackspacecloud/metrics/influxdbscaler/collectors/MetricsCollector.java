@@ -1,7 +1,6 @@
 package com.rackspacecloud.metrics.influxdbscaler.collectors;
 
 import com.rackspacecloud.metrics.influxdbscaler.models.InfluxDBMetricsCollection;
-import com.rackspacecloud.metrics.influxdbscaler.models.PatchStatefulSetInput;
 import com.rackspacecloud.metrics.influxdbscaler.models.StatefulSetStatus;
 import com.rackspacecloud.metrics.influxdbscaler.models.routing.DatabasesSeriesCount;
 import com.rackspacecloud.metrics.influxdbscaler.models.routing.InfluxDBInstance;
@@ -17,10 +16,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 
 public class MetricsCollector {
     private static final Logger LOGGER = LoggerFactory.getLogger(MetricsCollector.class);
@@ -36,15 +31,15 @@ public class MetricsCollector {
     private String namespace;
     private String statefulSetName;
     private String headlessServiceName;
+    private int totalSeriesCountIterations;
 
-    private static final long SERIES_THRESHOLD = 10000;
+    private static final long SERIES_GROWTH_THRESHOLD = 1;
 
     private InfluxDBHelper influxDBHelper;
     private StatefulSetProvider statefulSetProvider;
     private RoutingInformationRepository routingInformationRepository;
     private MaxMinInstancesRepository maxMinInstancesRepository;
     private DatabasesSeriesCountRepository databasesSeriesCountRepository;
-    private final ExecutorService executorService = Executors.newSingleThreadExecutor();
 
     public MetricsCollector(
             String namespace,
@@ -56,6 +51,7 @@ public class MetricsCollector {
             MaxMinInstancesRepository maxMinInstancesRepository,
             DatabasesSeriesCountRepository databasesSeriesCountRepository,
             InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary,
+            int totalSeriesCountIterations,
             boolean isLocal) {
         this.namespace = namespace;
         this.statefulSetName = statefulSetName;
@@ -66,6 +62,7 @@ public class MetricsCollector {
         this.maxMinInstancesRepository = maxMinInstancesRepository;
         this.databasesSeriesCountRepository = databasesSeriesCountRepository;
         this.influxDBInstanceStatsSummary = influxDBInstanceStatsSummary;
+        this.totalSeriesCountIterations = totalSeriesCountIterations;
 
         setInitialInfluxDBInstances(isLocal);
 
@@ -75,7 +72,7 @@ public class MetricsCollector {
     /**
      * Get all of the InfluxDB URLs from the InfluxDB StatefulSet and add it to Redis database
      */
-    private void setInitialInfluxDBInstances(boolean isLocal){
+    private void setInitialInfluxDBInstances(boolean isLocal) {
         List<InfluxDBInstance> instances = new ArrayList<>();
 
         if(isLocal) {
@@ -89,8 +86,7 @@ public class MetricsCollector {
     }
 
     public void populateWithLatestInstances(List<InfluxDBInstance> instances) {
-        //        http://data-influxdb-0.influxdbsvc:8086
-
+        // URL example for an instance of InfluxDB in statefulset: http://data-influxdb-0.influxdbsvc:8086
         // Get all of the URLs from StatefulSet
         StatefulSetStatus status = statefulSetProvider.getStatefulSetStatus(namespace, statefulSetName);
 
@@ -125,14 +121,15 @@ public class MetricsCollector {
     }
 
     private void initialize() {
-//        influxDBInstanceStatsSummary = new InfluxDBInstanceStatsSummary();
         instancesStats = new HashMap<>();
 
         routingInformationRepository.findAll().forEach( item -> {
             String url = item.getUrl();
             instancesStats.put(url, new ArrayList<>());
             InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount instanceDatabasesSeriesCount =
-                    new InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount(-1L, new HashMap<>());
+                    new InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount(
+                            new long[totalSeriesCountIterations], new HashMap<>()
+                    );
             influxDBInstanceStatsSummary.getInstancesStatsMap().put(url, instanceDatabasesSeriesCount);
         });
     }
@@ -158,18 +155,13 @@ public class MetricsCollector {
         InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount instanceDatabasesSeriesCount =
                 influxDBInstanceStatsSummary.getInstancesStatsMap().get(maxInstance);
 
-        if(!scalingInProgress && instanceDatabasesSeriesCount.getTotalSeriesCount() > SERIES_THRESHOLD) {
-            scalingInProgress = true;
+        long maxSeriesCountGrowth = instanceDatabasesSeriesCount.getSeriesCountPercentageGrowth();
 
-            // Scale InfluxDB StatefulSet
-            scaleAsync();
+        if(!scalingInProgress && maxSeriesCountGrowth > SERIES_GROWTH_THRESHOLD) {
+            LOGGER.warn("ALERT: Max series count growth is at [{}] past threshold of [{}]",
+                    maxSeriesCountGrowth, SERIES_GROWTH_THRESHOLD);
 
-            List<String> databasesToMoveOut = splitInstanceLoad(instanceDatabasesSeriesCount);
-
-            List<String[]> tenantIdAndMeasurementPairs =
-                    influxDBHelper.getTenantIdAndMeasurementList(maxInstance, databasesToMoveOut);
-
-            scalingInProgress = false;
+            addLatestStatefulSetNodes();
         }
 
         LOGGER.info("< end");
@@ -191,10 +183,12 @@ public class MetricsCollector {
             InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount instanceDatabasesSeriesCount =
                     instancesStats.get(url);
             DatabasesSeriesCount databasesSeriesCount = new DatabasesSeriesCount(url,
-                    instanceDatabasesSeriesCount.getTotalSeriesCount(),
+                    instanceDatabasesSeriesCount.getSeriesCountPercentageGrowth(),
                     instanceDatabasesSeriesCount.getDatabaseSeriesCountMap());
 
-            LOGGER.info("Total series count in [{}] is [{}]", url, instanceDatabasesSeriesCount.getTotalSeriesCount());
+            long latestTotalSeriesCount = instanceDatabasesSeriesCount.getLatestTotalSeriesCount();
+            LOGGER.info("Total series count is [{}] with percentage growth [{}] in instance [{}]",
+                    latestTotalSeriesCount, instanceDatabasesSeriesCount.getSeriesCountPercentageGrowth(), url);
 
             databasesSeriesCountRecords.add(databasesSeriesCount);
         }
@@ -218,72 +212,32 @@ public class MetricsCollector {
             throw new Exception("influxDBInstanceStatsSummary.getInstancesStatsMap().get(minUrl) is null");
 
         maxAndMinSeriesInstances.add(new MaxAndMinSeriesInstances("MAX",
-                maxUrl, influxDBInstanceStatsSummary.getInstancesStatsMap().get(maxUrl).getTotalSeriesCount()));
+                maxUrl,
+                influxDBInstanceStatsSummary.getInstancesStatsMap().get(maxUrl).getSeriesCountPercentageGrowth()));
 
         maxAndMinSeriesInstances.add(new MaxAndMinSeriesInstances("MIN",
-                minUrl, influxDBInstanceStatsSummary.getInstancesStatsMap().get(minUrl).getTotalSeriesCount()));
+                minUrl,
+                influxDBInstanceStatsSummary.getInstancesStatsMap().get(minUrl).getSeriesCountPercentageGrowth()));
 
         maxMinInstancesRepository.saveAll(maxAndMinSeriesInstances);
     }
 
-    private void getTenantIdAndMeasurementListToReroute(
-            String instanceUrl, List<String> databaseToMoveOut) throws Exception {
-        influxDBHelper.getTenantIdAndMeasurementList(instanceUrl, databaseToMoveOut);
-    }
+    private void addLatestStatefulSetNodes() throws Exception {
+        int statusCheckCount = 0;
+        StatefulSetStatus status = null;
+        while(statusCheckCount < 60) {
+            status = statefulSetProvider.getStatefulSetStatus(namespace, statefulSetName);
+            if(status.getReadyReplicas() == status.getReplicas()) break;
 
-
-    private List<String> splitInstanceLoad(
-            InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount instanceDatabasesSeriesCount) {
-        long targetSeriesCount = instanceDatabasesSeriesCount.getTotalSeriesCount()/2;
-        Map<String, Long> databaseSeriesCount = instanceDatabasesSeriesCount.getDatabaseSeriesCountMap();
-
-        List<Map.Entry<String, Long>> entries = new ArrayList<>(databaseSeriesCount.entrySet());
-
-        entries.removeIf(entry -> !entry.getKey().startsWith("db_"));
-
-        System.out.println(entries);
-
-        entries.sort(new Comparator<Map.Entry<String, Long>>() {
-            @Override
-            public int compare(Map.Entry<String, Long> o1, Map.Entry<String, Long> o2) {
-                return -1 * (o1.getValue().compareTo(o2.getValue()));
-            }
-        });
-
-        System.out.println(entries);
-
-        long tempTotal = 0L;
-        List<String> databaseGroupToMoveOut = new ArrayList<>();
-        for(int i = 0; i < entries.size(); i++) {
-            Map.Entry<String, Long> entry = entries.get(i);
-            tempTotal += entry.getValue();
-
-            if(tempTotal > targetSeriesCount) break;
-
-            databaseGroupToMoveOut.add(entry.getKey());
+            Thread.sleep(5000);
         }
 
-        return databaseGroupToMoveOut;
-    }
+        if(status == null || status.getReadyReplicas() != status.getReplicas())
+            throw new Exception("statefulset nodes are not ready yet or there is no status on that yet");
 
-    private void scaleAsync() throws Exception {
-        statefulSetProvider.setNamespace(namespace);
-        statefulSetProvider.setName(statefulSetName);
+        setInitialInfluxDBInstances(false);
+        initialize();
 
-        StatefulSetStatus status = statefulSetProvider.getStatefulSetStatus(namespace, statefulSetName);
-
-        PatchStatefulSetInput patchStatefulSetInput = new PatchStatefulSetInput();
-        patchStatefulSetInput.setOp("replace");
-        patchStatefulSetInput.setPath("/spec/replicas");
-        patchStatefulSetInput.setValue(status.getReplicas() + 2);
-
-        statefulSetProvider.setBodyToPatch(new PatchStatefulSetInput[] {patchStatefulSetInput});
-
-        statefulSetProvider.call();
-
-//        Future<String> result = executorService.submit(statefulSetProvider);
-//        System.out.println(result.get());
-
-//        setInitialInfluxDBInstances(false);
+        scalingInProgress = false;
     }
 }
