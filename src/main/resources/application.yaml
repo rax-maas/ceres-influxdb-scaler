@@ -15,6 +15,8 @@ rest-template:
   pooling-http-client-connection-manager:
     max-total: 5 # Max number of connection to pool
 
+total-series-count.iterations: 10
+
 redis:
   hostname: localhost
   port: 6379
@@ -51,6 +53,8 @@ rest-template:
 
   pooling-http-client-connection-manager:
     max-total: 5 # Max number of connection to pool
+
+total-series-count.iterations: 10
 
 redis:
   hostname: ${REDIS_HOSTNAME}
