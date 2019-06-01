@@ -71,24 +71,24 @@ public class InfluxDBInstanceStatsSummary {
             this.databaseSeriesCountMap = databaseSeriesCountMap;
         }
 
-        /**
-         * Add total series count to the circular array collection
-         * @param totalSeriesCount
-         */
-        public void addToTotalSeriesCountArray(long totalSeriesCount) {
-            int latestIndex = writeIndex;
-            totalSeriesCountArray[writeIndex++] = totalSeriesCount;
-            latestTotalSeriesCount = totalSeriesCount;
-
-            if(writeIndex == totalSeriesCountArray.length) writeIndex = 0;
-
-            int oldestIndex = writeIndex; // Now since writeIndex has moved to next one
-
-            long diff = totalSeriesCountArray[latestIndex] - totalSeriesCountArray[oldestIndex];
-
-            if(diff > 0 && totalSeriesCountArray[oldestIndex] > 0) {
-                seriesCountPercentageGrowth = (diff * 100) / totalSeriesCountArray[oldestIndex];
-            }
-        }
+//        /**
+//         * Add total series count to the circular array collection
+//         * @param totalSeriesCount
+//         */
+//        public void addToTotalSeriesCountArray(long totalSeriesCount) {
+//            int latestIndex = writeIndex;
+//            totalSeriesCountArray[writeIndex++] = totalSeriesCount;
+//            latestTotalSeriesCount = totalSeriesCount;
+//
+//            if(writeIndex == totalSeriesCountArray.length) writeIndex = 0;
+//
+//            int oldestIndex = writeIndex; // Now since writeIndex has moved to next one
+//
+//            long diff = totalSeriesCountArray[latestIndex] - totalSeriesCountArray[oldestIndex];
+//
+//            if(diff > 0 && totalSeriesCountArray[oldestIndex] > 0) {
+//                seriesCountPercentageGrowth = (diff * 100) / totalSeriesCountArray[oldestIndex];
+//            }
+//        }
     }
 }

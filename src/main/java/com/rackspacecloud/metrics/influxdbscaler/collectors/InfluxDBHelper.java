@@ -1,10 +1,8 @@
 package com.rackspacecloud.metrics.influxdbscaler.collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.rackspacecloud.metrics.influxdbscaler.models.DatabaseSeriesStatsResults;
 import com.rackspacecloud.metrics.influxdbscaler.models.InfluxDBMetricsCollection;
 import com.rackspacecloud.metrics.influxdbscaler.models.StatsResults;
-import com.rackspacecloud.metrics.influxdbscaler.models.stats.InfluxDBInstanceStatsSummary;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,11 +13,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class InfluxDBHelper {
+    private final static String SHOW_STATS = "q=SHOW STATS";
     private RestTemplate restTemplate;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(InfluxDBHelper.class);
@@ -29,18 +29,20 @@ public class InfluxDBHelper {
         this.restTemplate = restTemplate;
     }
 
-    public void populateStats(
-            final Map<String, List<InfluxDBMetricsCollection.InfluxDBMetrics>> instancesStats,
-            final InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary) throws Exception {
+    /**
+     * Get InfluxDB instance with min series count from the given list of InfluxDB influxDBInstances
+     * @param influxDBInstances
+     * @return
+     * @throws Exception
+     */
+    public String getMinInstance(List<String> influxDBInstances) throws Exception {
+        long minSeriesCount = Long.MAX_VALUE; // Initialize min
 
-        long maxSeriesCountPercentageGrowth = Long.MIN_VALUE; // Initialize max
-        long minSeriesCountPercentageGrowth = Long.MAX_VALUE; // Initialize min
+        String minInstance = "";
 
-        for(String baseUrl : instancesStats.keySet()) {
-            String queryString = "q=SHOW STATS";
-
+        for(String url : influxDBInstances) {
             // Get all of the stats for given InfluxDB instance
-            ResponseEntity<String> response = getResponseEntity(baseUrl, queryString);
+            ResponseEntity<String> response = getResponseEntity(url, SHOW_STATS);
 
             String body = response.getBody();
             ObjectMapper mapper = new ObjectMapper();
@@ -52,101 +54,57 @@ public class InfluxDBHelper {
                 if (statsResults.length != 1) throw new Exception("Either no result or more than 1 result found.");
 
                 StatsResults.SeriesMetric[] seriesMetricCollection = statsResults[0].getSeries();
-                List<InfluxDBMetricsCollection.InfluxDBMetrics> instanceMetricsList = instancesStats.get(baseUrl);
-                InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount instanceDatabasesSeriesCount =
-                        influxDBInstanceStatsSummary.getInstancesStatsMap().get(baseUrl);
 
-                populateSeriesCountForTheInstance(seriesMetricCollection,
-                        instanceMetricsList, instanceDatabasesSeriesCount);
+                long totalSeriesCount = getTotalSeriesCount(seriesMetricCollection);
 
-                long seriesCountPercentageGrowth = instanceDatabasesSeriesCount.getSeriesCountPercentageGrowth();
-
-                if(influxDBInstanceStatsSummary.getInstanceUrlWithMaxSeriesCount().equals("") ||
-                        seriesCountPercentageGrowth >= maxSeriesCountPercentageGrowth) {
-                    influxDBInstanceStatsSummary.setInstanceUrlWithMaxSeriesCount(baseUrl);
-                    maxSeriesCountPercentageGrowth = seriesCountPercentageGrowth;
-                }
-
-                if(influxDBInstanceStatsSummary.getInstanceUrlWithMinSeriesCount().equals("") ||
-                        seriesCountPercentageGrowth < minSeriesCountPercentageGrowth) {
-                    influxDBInstanceStatsSummary.setInstanceUrlWithMinSeriesCount(baseUrl);
-                    minSeriesCountPercentageGrowth = seriesCountPercentageGrowth;
+                if(totalSeriesCount < minSeriesCount) {
+                    minInstance = url;
+                    minSeriesCount = totalSeriesCount;
                 }
             } catch (IOException e) {
-                e.printStackTrace();
+                LOGGER.error("While reading stats result for URL [{}], got error: [{}]", url, e.getMessage());
             }
         }
+
+        return minInstance;
     }
 
-    public List<String[]> getTenantIdAndMeasurementList(
-            final String instanceUrl,
-            final List<String> databaseList) throws Exception {
-        for(String database : databaseList) {
-            String queryString = String.format("q=SHOW SERIES ON %s", database);
+    public Map<String, StatsResults.SeriesMetric[]> getSeriesMetricCollection(
+            final Set<String> instances) throws Exception {
 
-            // Get all of the series
-            ResponseEntity<String> response = getResponseEntity(instanceUrl, queryString);
+        Map<String, StatsResults.SeriesMetric[]> seriesMetricCollectionMap = new HashMap<>();
+
+        for(String baseUrl : instances) {
+            // Get all of the stats for given InfluxDB instance
+            ResponseEntity<String> response = getResponseEntity(baseUrl, SHOW_STATS);
 
             String body = response.getBody();
             ObjectMapper mapper = new ObjectMapper();
 
             try {
-                DatabaseSeriesStatsResults result = mapper.readValue(body, DatabaseSeriesStatsResults.class);
-                DatabaseSeriesStatsResults.StatsResult[] statsResults = result.getResults();
+                StatsResults result = mapper.readValue(body, StatsResults.class);
+                StatsResults.StatsResult[] statsResults = result.getResults();
 
-                if (statsResults.length != 1) throw new Exception("No result found.");
+                if (statsResults.length != 1) throw new Exception("Either no result or more than 1 result found.");
 
-                DatabaseSeriesStatsResults.Series[] series = statsResults[0].getSeries();
-                if (series.length != 1) throw new Exception("No series found.");
-
-                String[][] seriesItems = series[0].getValues();
-
-                List<String[]> tenantIdAndMeasurementPairs = new ArrayList<>();
-
-                for(int i = 0; i < seriesItems.length; i++) {
-                    if(seriesItems[i].length != 1) throw new Exception("Invalid series item");
-
-                    String[] tenantIdAndMeasurement = getTenantIdAndMeasurement(seriesItems[i][0]);
-                    tenantIdAndMeasurementPairs.add(tenantIdAndMeasurement);
-                }
-
-                return tenantIdAndMeasurementPairs;
+                StatsResults.SeriesMetric[] seriesMetricCollection = statsResults[0].getSeries();
+                seriesMetricCollectionMap.put(baseUrl, seriesMetricCollection);
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
 
-        return null;
+        return seriesMetricCollectionMap;
     }
 
-    private String[] getTenantIdAndMeasurement(String seriesString) throws Exception {
-        String[] strArray = seriesString.split(",");
-
-        if(strArray.length < 2) throw new Exception("seriesString is not a line protocol string");
-
-        String[] tenantIdAndMeasurement = new String[2];
-        tenantIdAndMeasurement[1] = strArray[0];
-
-        for(int i = 1; i < strArray.length; i++) {
-            String[] tagAndValue = strArray[i].split("=");
-
-            if(tagAndValue.length != 2) throw new Exception("tag-value entry is not a line protocol string");
-            if(tagAndValue[0].equalsIgnoreCase("tenantId")) {
-                tenantIdAndMeasurement[0] = tagAndValue[1];
-                break;
-            }
-        }
-
-        return tenantIdAndMeasurement;
-    }
-
-    private void populateSeriesCountForTheInstance(
-            StatsResults.SeriesMetric[] seriesMetricCollection,
-            List<InfluxDBMetricsCollection.InfluxDBMetrics> influxDBMetricsList,
-            InfluxDBInstanceStatsSummary.InstanceDatabasesSeriesCount instanceDatabasesSeriesCount) throws Exception {
-
+    /**
+     * Get total series count from the stats result
+     * @param seriesMetricCollection
+     * @return
+     * @throws Exception
+     */
+    private long getTotalSeriesCount(StatsResults.SeriesMetric[] seriesMetricCollection) throws Exception {
         Long totalSeriesCount = 0L;
-        Map<String, Long> databaseSeriesCountMap = instanceDatabasesSeriesCount.getDatabaseSeriesCountMap();
 
         for(int i = 0; i < seriesMetricCollection.length; i++) {
             InfluxDBMetricsCollection.InfluxDBMetrics metric = new InfluxDBMetricsCollection.InfluxDBMetrics();
@@ -167,15 +125,11 @@ public class InfluxDBHelper {
 
             if(metric.getName().equalsIgnoreCase("database")) {
                 long seriesCount = metric.getFields().get("numSeries");
-                String databaseName = metric.getTags().get("database");
-                databaseSeriesCountMap.put(databaseName, seriesCount);
                 totalSeriesCount += seriesCount;
             }
-
-            influxDBMetricsList.add(metric);
         }
 
-        instanceDatabasesSeriesCount.addToTotalSeriesCountArray(totalSeriesCount);
+        return totalSeriesCount;
     }
 
     private ResponseEntity<String> getResponseEntity(String baseUrl, String queryString) {

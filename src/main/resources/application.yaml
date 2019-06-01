@@ -1,3 +1,5 @@
+server:
+  port: 8083
 
 ---
 spring:
@@ -17,6 +19,12 @@ rest-template:
 
 total-series-count.iterations: 10
 
+cron-config: "*/10 * * * * *"
+
+local-metrics-url: http://localhost:8086
+local-metrics-database: ceres
+local-metrics-rp: autogen
+
 redis:
   hostname: localhost
   port: 6379
@@ -35,7 +43,7 @@ management:
     export:
       influx:
         db: ceres
-        uri: ${INFLUXDB_METRICS_URL}
+        uri: http://localhost:8086
         auto-create-db: true
 
 ---
@@ -56,6 +64,12 @@ rest-template:
 
 total-series-count.iterations: 10
 
+cron-config: "*/60 * * * * *"
+
+local-metrics-url: ${INFLUXDB_METRICS_URL}
+local-metrics-database: ceres
+local-metrics-rp: autogen
+
 redis:
   hostname: ${REDIS_HOSTNAME}
   port: ${REDIS_PORT}
@@ -65,14 +79,16 @@ kubernetes:
   statefulset-name: ${KUBERNETES_STATEFULSET_NAME}
   headless-service-name: ${KUBERNETES_HEADLESS_SERVICE_NAME}
 
-#management:
-#  endpoints:
-#    web:
-#      exposure:
-#        include: "health,jolokia,metrics"
-#  metrics:
-#    export:
-#      influx:
-#        db: ceres
-#        uri: ${INFLUXDB_METRICS_URL}
-#        auto-create-db: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,jolokia,metrics"
+  metrics:
+    tags:
+      stack: "prod"
+    export:
+      influx:
+        db: ceres
+        uri: ${INFLUXDB_METRICS_URL}
+        auto-create-db: true

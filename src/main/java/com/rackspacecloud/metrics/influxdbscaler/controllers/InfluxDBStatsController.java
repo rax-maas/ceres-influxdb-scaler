@@ -2,8 +2,7 @@ package com.rackspacecloud.metrics.influxdbscaler.controllers;
 
 import com.rackspacecloud.metrics.influxdbscaler.collectors.MetricsCollector;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -15,13 +14,8 @@ public class InfluxDBStatsController {
         this.metricsCollector = metricsCollector;
     }
 
-    @RequestMapping(
-            path = "/min-series-count-url",
-            method = RequestMethod.GET
-    )
+    @GetMapping(path = "/min-series-count-url")
     public String getMinSeriesCountInstanceUrl() throws Exception {
-        String minSeriesInstanceUrl = metricsCollector.getMinSeriesCountInstance();
-
-        return minSeriesInstanceUrl;
+        return metricsCollector.getMinSeriesCountInstance();
     }
 }

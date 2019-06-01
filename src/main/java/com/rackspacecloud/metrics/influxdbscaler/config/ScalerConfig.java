@@ -2,7 +2,9 @@ package com.rackspacecloud.metrics.influxdbscaler.config;
 
 import com.rackspacecloud.metrics.influxdbscaler.collectors.InfluxDBHelper;
 import com.rackspacecloud.metrics.influxdbscaler.collectors.MetricsCollector;
-import com.rackspacecloud.metrics.influxdbscaler.models.stats.InfluxDBInstanceStatsSummary;
+import com.rackspacecloud.metrics.influxdbscaler.models.StatefulSetStatus;
+import com.rackspacecloud.metrics.influxdbscaler.models.routing.InfluxDBInstance;
+import com.rackspacecloud.metrics.influxdbscaler.providers.InfluxDBInstancesUpdater;
 import com.rackspacecloud.metrics.influxdbscaler.providers.StatefulSetProvider;
 import com.rackspacecloud.metrics.influxdbscaler.repositories.DatabasesSeriesCountRepository;
 import com.rackspacecloud.metrics.influxdbscaler.repositories.MaxMinInstancesRepository;
@@ -15,6 +17,8 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 @Configuration
 @EnableScheduling
@@ -31,9 +35,58 @@ public class ScalerConfig {
     @Value("${total-series-count.iterations}")
     private int totalSeriesCountIterations;
 
+    @Value("${local-metrics-url}")
+    private String localMetricsUrl;
+
+    @Value("${local-metrics-database}")
+    private String localMetricsDatabase;
+
+    @Value("${local-metrics-rp}")
+    private String localMetricsRetPolicy;
+
+//    @Bean
+//    public InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary() {
+//        return new InfluxDBInstanceStatsSummary();
+//    }
+
     @Bean
-    public InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary() {
-        return new InfluxDBInstanceStatsSummary();
+    @Profile("development")
+    public InfluxDBInstancesUpdater updater() {
+        return statefulSetProvider -> {
+            InfluxDBInstance instance1 = new InfluxDBInstance("influxdb-0", "http://localhost:8086");
+            InfluxDBInstance instance2 = new InfluxDBInstance("influxdb-1", "http://localhost:8087");
+
+            List<InfluxDBInstance> instances = new ArrayList<>();
+            instances.add(instance1);
+            instances.add(instance2);
+
+            return instances;
+        };
+    }
+
+    @Bean
+    @Profile("production")
+    public InfluxDBInstancesUpdater influxDBInstancesUpdater() {
+        return statefulSetProvider -> {
+            // URL example for an instance of InfluxDB in statefulset: http://data-influxdb-0.influxdbsvc:8086
+            // Get all of the URLs from StatefulSet
+            StatefulSetStatus status = statefulSetProvider.getStatefulSetStatus();
+
+            List<InfluxDBInstance> instances = new ArrayList<>();
+
+            for(int i = 0; i < status.getReadyReplicas(); i++) {
+                String influxDBInstanceName = String.format("%s-%d", statefulSetName, i);
+
+                String url = String.format("http://%s:8086", influxDBInstanceName);
+                if(headlessServiceName != null && !headlessServiceName.isEmpty()) {
+                    url = String.format("http://%s.%s:8086", influxDBInstanceName, headlessServiceName);
+                }
+
+                instances.add(new InfluxDBInstance(influxDBInstanceName, url));
+            }
+
+            return instances;
+        };
     }
 
     @Bean
@@ -42,22 +95,14 @@ public class ScalerConfig {
     public MetricsCollector metricsCollector(
             InfluxDBHelper influxDBHelper,
             StatefulSetProvider statefulSetProvider,
-            RoutingInformationRepository routingInformationRepository,
-            MaxMinInstancesRepository maxMinInstancesRepository,
-            DatabasesSeriesCountRepository databasesSeriesCountRepository,
-            InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary) {
+            InfluxDBInstancesUpdater updater) {
         return new MetricsCollector(
-                namespace,
-                statefulSetName,
-                headlessServiceName,
                 influxDBHelper,
                 statefulSetProvider,
-                routingInformationRepository,
-                maxMinInstancesRepository,
-                databasesSeriesCountRepository,
-                influxDBInstanceStatsSummary,
-                totalSeriesCountIterations,
-                false
+                updater,
+                localMetricsUrl,
+                localMetricsDatabase,
+                localMetricsRetPolicy
         );
     }
 
@@ -67,34 +112,27 @@ public class ScalerConfig {
     public MetricsCollector getMetricsCollector(
             InfluxDBHelper influxDBHelper,
             StatefulSetProvider statefulSetProvider,
-            RoutingInformationRepository routingInformationRepository,
-            MaxMinInstancesRepository maxMinInstancesRepository,
-            DatabasesSeriesCountRepository databasesSeriesCountRepository,
-            InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary) {
+            InfluxDBInstancesUpdater updater) {
         return new MetricsCollector(
-                namespace,
-                statefulSetName,
-                headlessServiceName,
                 influxDBHelper,
                 statefulSetProvider,
-                routingInformationRepository,
-                maxMinInstancesRepository,
-                databasesSeriesCountRepository,
-                influxDBInstanceStatsSummary,
-                totalSeriesCountIterations,
-                true
+                updater,
+                localMetricsUrl,
+                localMetricsDatabase,
+                localMetricsRetPolicy
         );
     }
 
     @Bean
     @Profile("development")
     public StatefulSetProvider statefulSetProvider() throws IOException {
-        return new StatefulSetProvider(true);
+        String configFileName = "/Users/mrit1806/.kube/config";
+        return new StatefulSetProvider(configFileName, namespace, statefulSetName);
     }
 
     @Bean
     @Profile("production")
     public StatefulSetProvider getStatefulSetProvider() throws IOException {
-        return new StatefulSetProvider(false);
+        return new StatefulSetProvider(null, namespace, statefulSetName);
     }
 }
