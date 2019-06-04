@@ -6,9 +6,6 @@ import com.rackspacecloud.metrics.influxdbscaler.models.StatefulSetStatus;
 import com.rackspacecloud.metrics.influxdbscaler.models.routing.InfluxDBInstance;
 import com.rackspacecloud.metrics.influxdbscaler.providers.InfluxDBInstancesUpdater;
 import com.rackspacecloud.metrics.influxdbscaler.providers.StatefulSetProvider;
-import com.rackspacecloud.metrics.influxdbscaler.repositories.DatabasesSeriesCountRepository;
-import com.rackspacecloud.metrics.influxdbscaler.repositories.MaxMinInstancesRepository;
-import com.rackspacecloud.metrics.influxdbscaler.repositories.RoutingInformationRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -17,6 +14,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -43,11 +41,6 @@ public class ScalerConfig {
 
     @Value("${local-metrics-rp}")
     private String localMetricsRetPolicy;
-
-//    @Bean
-//    public InfluxDBInstanceStatsSummary influxDBInstanceStatsSummary() {
-//        return new InfluxDBInstanceStatsSummary();
-//    }
 
     @Bean
     @Profile("development")
@@ -91,25 +84,7 @@ public class ScalerConfig {
 
     @Bean
     @Autowired
-    @Profile("production")
     public MetricsCollector metricsCollector(
-            InfluxDBHelper influxDBHelper,
-            StatefulSetProvider statefulSetProvider,
-            InfluxDBInstancesUpdater updater) {
-        return new MetricsCollector(
-                influxDBHelper,
-                statefulSetProvider,
-                updater,
-                localMetricsUrl,
-                localMetricsDatabase,
-                localMetricsRetPolicy
-        );
-    }
-
-    @Bean
-    @Autowired
-    @Profile("development")
-    public MetricsCollector getMetricsCollector(
             InfluxDBHelper influxDBHelper,
             StatefulSetProvider statefulSetProvider,
             InfluxDBInstancesUpdater updater) {
@@ -126,7 +101,8 @@ public class ScalerConfig {
     @Bean
     @Profile("development")
     public StatefulSetProvider statefulSetProvider() throws IOException {
-        String configFileName = "/Users/mrit1806/.kube/config";
+        String homeDir = System.getProperty("user.home");
+        String configFileName = Paths.get( homeDir, ".kube/config").toString();
         return new StatefulSetProvider(configFileName, namespace, statefulSetName);
     }
 

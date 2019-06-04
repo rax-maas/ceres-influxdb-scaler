@@ -1,15 +1,10 @@
 package com.rackspacecloud.metrics.influxdbscaler.collectors;
 
 import com.rackspacecloud.metrics.influxdbscaler.models.InfluxDBMetricsCollection;
-import com.rackspacecloud.metrics.influxdbscaler.models.StatefulSetStatus;
 import com.rackspacecloud.metrics.influxdbscaler.models.StatsResults;
 import com.rackspacecloud.metrics.influxdbscaler.models.routing.InfluxDBInstance;
-import com.rackspacecloud.metrics.influxdbscaler.models.stats.InfluxDBInstanceStatsSummary;
 import com.rackspacecloud.metrics.influxdbscaler.providers.InfluxDBInstancesUpdater;
 import com.rackspacecloud.metrics.influxdbscaler.providers.StatefulSetProvider;
-import com.rackspacecloud.metrics.influxdbscaler.repositories.DatabasesSeriesCountRepository;
-import com.rackspacecloud.metrics.influxdbscaler.repositories.MaxMinInstancesRepository;
-import com.rackspacecloud.metrics.influxdbscaler.repositories.RoutingInformationRepository;
 import org.influxdb.BatchOptions;
 import org.influxdb.InfluxDB;
 import org.influxdb.InfluxDBFactory;
@@ -18,12 +13,24 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.time.Instant;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * This class collects all of the metrics from the InfluxDB instances
+ */
 public class MetricsCollector {
     private static final Logger LOGGER = LoggerFactory.getLogger(MetricsCollector.class);
 
+    /**
+     * 'influxDB' is responsible for writing InfluxDB stateful instances metrics data into
+     * the local metrics database.
+     * 'localMetricsDatabase' database and 'localMetricsRetPolicy' retention policy
+     * contain all of the metrics data from InfluxDB stateful instances.
+     */
     private InfluxDB influxDB;
     private String localMetricsDatabase;
     private String localMetricsRetPolicy;
@@ -37,9 +44,6 @@ public class MetricsCollector {
 
     private InfluxDBHelper influxDBHelper;
     private StatefulSetProvider statefulSetProvider;
-//    private RoutingInformationRepository routingInformationRepository;
-//    private MaxMinInstancesRepository maxMinInstancesRepository;
-//    private DatabasesSeriesCountRepository databasesSeriesCountRepository;
     private InfluxDBInstancesUpdater updater;
 
     public MetricsCollector(
@@ -78,6 +82,7 @@ public class MetricsCollector {
         LOGGER.info("> start");
         LOGGER.info("Current time {}", Instant.now());
 
+        // seriesMetricCollection collects all of the stats for given InfluxDB instances using "show stats" api
         Map<String, StatsResults.SeriesMetric[]> seriesMetricCollection =
                 influxDBHelper.getSeriesMetricCollection(instancesStats.keySet());
 
@@ -87,17 +92,9 @@ public class MetricsCollector {
             List<InfluxDBMetricsCollection.InfluxDBMetrics> metricsList = getTotalSeriesCount(seriesMetrics);
             instancesStats.put(instance, metricsList);
 
-//            if(metric.getName().equalsIgnoreCase("database")) {
-//                long seriesCount = metric.getFields().get("numSeries");
-//                String databaseName = metric.getTags().get("database");
-//                databaseSeriesCountMap.put(databaseName, seriesCount);
-//                totalSeriesCount += seriesCount;
-//            }
-
             metricsList.forEach(item -> {
                 String lineProtocoledString = item.toLineProtocol(instance);
                 lineProtocoledCollection.add(lineProtocoledString);
-//                LOGGER.info(lineProtocoledString);
             });
         }
 
@@ -137,6 +134,11 @@ public class MetricsCollector {
         return metricsList;
     }
 
+    /**
+     * This method returns InfluxDBInstance with minimum series count.
+     * @return
+     * @throws Exception
+     */
     public synchronized String getMinSeriesCountInstance() throws Exception {
         List<String> urls = new ArrayList<>();
         influxDBInstances.forEach( item -> urls.add(item.getUrl()));
