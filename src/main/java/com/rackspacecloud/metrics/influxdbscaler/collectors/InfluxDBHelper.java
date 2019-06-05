@@ -1,22 +1,14 @@
 package com.rackspacecloud.metrics.influxdbscaler.collectors;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rackspacecloud.metrics.influxdbscaler.models.InfluxDBMetricsCollection;
 import com.rackspacecloud.metrics.influxdbscaler.models.StatsResults;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class InfluxDBHelper {
     private final static String SHOW_STATS = "q=SHOW STATS";
@@ -35,20 +27,16 @@ public class InfluxDBHelper {
      * @return
      * @throws Exception
      */
-    public String getMinInstance(List<String> influxDBInstances) throws Exception {
+    public String getMinInstance(Collection<String> influxDBInstances) throws Exception {
         long minSeriesCount = Long.MAX_VALUE; // Initialize min
 
         String minInstance = "";
 
         for(String url : influxDBInstances) {
             // Get all of the stats for given InfluxDB instance
-            ResponseEntity<String> response = getResponseEntity(url, SHOW_STATS);
-
-            String body = response.getBody();
-            ObjectMapper mapper = new ObjectMapper();
+            StatsResults result = getResponseEntity(url, SHOW_STATS);
 
             try {
-                StatsResults result = mapper.readValue(body, StatsResults.class);
                 StatsResults.StatsResult[] statsResults = result.getResults();
 
                 if (statsResults.length != 1) throw new Exception("Either no result or more than 1 result found.");
@@ -70,19 +58,15 @@ public class InfluxDBHelper {
     }
 
     public Map<String, StatsResults.SeriesMetric[]> getSeriesMetricCollection(
-            final Set<String> instances) throws Exception {
+            final Collection<String> instances) throws Exception {
 
         Map<String, StatsResults.SeriesMetric[]> seriesMetricCollectionMap = new HashMap<>();
 
         for(String baseUrl : instances) {
             // Get all of the stats for given InfluxDB instance
-            ResponseEntity<String> response = getResponseEntity(baseUrl, SHOW_STATS);
-
-            String body = response.getBody();
-            ObjectMapper mapper = new ObjectMapper();
+            StatsResults result = getResponseEntity(baseUrl, SHOW_STATS);
 
             try {
-                StatsResults result = mapper.readValue(body, StatsResults.class);
                 StatsResults.StatsResult[] statsResults = result.getResults();
 
                 if (statsResults.length != 1) throw new Exception("Either no result or more than 1 result found.");
@@ -132,19 +116,8 @@ public class InfluxDBHelper {
         return totalSeriesCount;
     }
 
-    private ResponseEntity<String> getResponseEntity(String baseUrl, String queryString) {
-        ResponseEntity<String> response = null;
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-
+    private StatsResults getResponseEntity(String baseUrl, String queryString) {
         String url = String.format("%s/query?%s", baseUrl, queryString);
-        try {
-            response = restTemplate.exchange(url, HttpMethod.GET, null, String.class);
-        }
-        catch(Exception ex){
-            LOGGER.error("restTemplate.exchange threw exception with message: {}", ex.getMessage());
-        }
-        return response;
+        return restTemplate.getForObject(url, StatsResults.class);
     }
 }

@@ -5,18 +5,13 @@ import com.rackspacecloud.metrics.influxdbscaler.models.StatsResults;
 import com.rackspacecloud.metrics.influxdbscaler.models.routing.InfluxDBInstance;
 import com.rackspacecloud.metrics.influxdbscaler.providers.InfluxDBInstancesUpdater;
 import com.rackspacecloud.metrics.influxdbscaler.providers.StatefulSetProvider;
-import org.influxdb.BatchOptions;
 import org.influxdb.InfluxDB;
-import org.influxdb.InfluxDBFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -31,7 +26,8 @@ public class MetricsCollector {
      * 'localMetricsDatabase' database and 'localMetricsRetPolicy' retention policy
      * contain all of the metrics data from InfluxDB stateful instances.
      */
-    private InfluxDB influxDB;
+    private InfluxDBFactory influxDBFactory;
+    private String localMetricsUrl;
     private String localMetricsDatabase;
     private String localMetricsRetPolicy;
 
@@ -43,34 +39,36 @@ public class MetricsCollector {
     List<InfluxDBInstance> influxDBInstances;
 
     private InfluxDBHelper influxDBHelper;
-    private StatefulSetProvider statefulSetProvider;
     private InfluxDBInstancesUpdater updater;
 
     public MetricsCollector(
             InfluxDBHelper influxDBHelper,
             StatefulSetProvider statefulSetProvider,
             InfluxDBInstancesUpdater updater,
+            InfluxDBFactory influxDBFactory,
             String localMetricsUrl,
             String localMetricsDatabase,
             String localMetricsRetPolicy) {
 
         this.influxDBHelper = influxDBHelper;
-        this.statefulSetProvider = statefulSetProvider;
         this.updater = updater;
+        this.localMetricsUrl = localMetricsUrl;
         this.localMetricsDatabase = localMetricsDatabase;
         this.localMetricsRetPolicy = localMetricsRetPolicy;
+        this.influxDBFactory = influxDBFactory;
 
         influxDBInstances = this.updater.update(statefulSetProvider);
 
         instancesStats = new HashMap<>();
-        this.influxDB = InfluxDBFactory.connect(localMetricsUrl);
-        this.influxDB.setLogLevel(InfluxDB.LogLevel.BASIC);
-        this.influxDB.enableBatch(BatchOptions.DEFAULTS);
 
         influxDBInstances.forEach(item -> {
             String url = item.getUrl();
             instancesStats.put(url, new ArrayList<>());
         });
+    }
+
+    public Set<String> getInfluxDBInstanceUrls() {
+        return instancesStats.keySet();
     }
 
     /**
@@ -99,6 +97,8 @@ public class MetricsCollector {
         }
 
         String metricsToPublish = String.join("\n", lineProtocoledCollection);
+
+        InfluxDB influxDB = influxDBFactory.getInfluxDB(localMetricsUrl);
 
         influxDB.write(localMetricsDatabase, localMetricsRetPolicy,
                 InfluxDB.ConsistencyLevel.ONE, TimeUnit.SECONDS, metricsToPublish);
@@ -140,9 +140,6 @@ public class MetricsCollector {
      * @throws Exception
      */
     public synchronized String getMinSeriesCountInstance() throws Exception {
-        List<String> urls = new ArrayList<>();
-        influxDBInstances.forEach( item -> urls.add(item.getUrl()));
-
-        return influxDBHelper.getMinInstance(urls);
+        return influxDBHelper.getMinInstance(getInfluxDBInstanceUrls());
     }
 }

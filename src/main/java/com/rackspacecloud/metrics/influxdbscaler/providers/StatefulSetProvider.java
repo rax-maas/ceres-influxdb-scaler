@@ -22,6 +22,7 @@ public class StatefulSetProvider {
     private final String namespace;
     private final String statefulSetName;
     private ApiClient apiClient;
+    private AppsV1Api apiInstance;
 
     public StatefulSetProvider(
             final String configFileName,
@@ -38,15 +39,14 @@ public class StatefulSetProvider {
             apiClient = Config.fromCluster();
             Configuration.setDefaultApiClient(apiClient);
         }
+
+        apiInstance = new AppsV1Api(apiClient);
     }
 
     public StatefulSetStatus getStatefulSetStatus() {
-        AppsV1Api apiInstance = new AppsV1Api(apiClient);
-        String pretty = "true";
-
         try {
             V1StatefulSet v1StatefulSet =
-                    apiInstance.readNamespacedStatefulSetStatus(statefulSetName, namespace, pretty);
+                    apiInstance.readNamespacedStatefulSetStatus(statefulSetName, namespace, "true");
             V1StatefulSetStatus status = v1StatefulSet.getStatus();
 
             return new StatefulSetStatus(

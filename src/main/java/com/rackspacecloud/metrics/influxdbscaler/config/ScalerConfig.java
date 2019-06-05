@@ -1,5 +1,6 @@
 package com.rackspacecloud.metrics.influxdbscaler.config;
 
+import com.rackspacecloud.metrics.influxdbscaler.collectors.InfluxDBFactory;
 import com.rackspacecloud.metrics.influxdbscaler.collectors.InfluxDBHelper;
 import com.rackspacecloud.metrics.influxdbscaler.collectors.MetricsCollector;
 import com.rackspacecloud.metrics.influxdbscaler.models.StatefulSetStatus;
@@ -83,15 +84,22 @@ public class ScalerConfig {
     }
 
     @Bean
+    public InfluxDBFactory influxDBFactory() {
+        return new InfluxDBFactory();
+    }
+
+    @Bean
     @Autowired
     public MetricsCollector metricsCollector(
             InfluxDBHelper influxDBHelper,
             StatefulSetProvider statefulSetProvider,
-            InfluxDBInstancesUpdater updater) {
+            InfluxDBInstancesUpdater updater,
+            InfluxDBFactory influxDBFactory) {
         return new MetricsCollector(
                 influxDBHelper,
                 statefulSetProvider,
                 updater,
+                influxDBFactory,
                 localMetricsUrl,
                 localMetricsDatabase,
                 localMetricsRetPolicy
