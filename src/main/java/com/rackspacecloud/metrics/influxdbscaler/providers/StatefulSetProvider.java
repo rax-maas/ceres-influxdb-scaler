@@ -22,6 +22,7 @@ public class StatefulSetProvider {
     private final String namespace;
     private final String statefulSetName;
     private ApiClient apiClient;
+    private AppsV1Api apiInstance;
 
     public StatefulSetProvider(
             final String configFileName,
@@ -38,15 +39,14 @@ public class StatefulSetProvider {
             apiClient = Config.fromCluster();
             Configuration.setDefaultApiClient(apiClient);
         }
+
+        apiInstance = new AppsV1Api(apiClient);
     }
 
     public StatefulSetStatus getStatefulSetStatus() {
-        AppsV1Api apiInstance = new AppsV1Api(apiClient);
-        String pretty = "true";
-
         try {
             V1StatefulSet v1StatefulSet =
-                    apiInstance.readNamespacedStatefulSetStatus(statefulSetName, namespace, pretty);
+                    apiInstance.readNamespacedStatefulSetStatus(statefulSetName, namespace, "true");
             V1StatefulSetStatus status = v1StatefulSet.getStatus();
 
             return new StatefulSetStatus(
@@ -59,54 +59,4 @@ public class StatefulSetProvider {
             return null;
         }
     }
-
-////    public void getStatefulSetInstances(String namespace, String statefulSetName) {
-////        AppsV1Api apiInstance = new AppsV1Api(apiClient);
-////        String pretty = "true";
-////
-////        try {
-////            V1StatefulSet result = apiInstance.readNamespacedStatefulSet(
-////                    statefulSetName, namespace, pretty, null, null);
-////
-////            System.out.println(result);
-////
-////
-//////            return result.toString();
-////        } catch (ApiException e) {
-////            LOGGER.error(e.getMessage(), e);
-//////            return e.getLocalizedMessage();
-////        }
-////    }
-//
-////    @Override
-//    public String call() throws Exception {
-//        if(namespace == null || namespace == "") throw new Exception("namespace is null or empty");
-//        if(statefulSetName == null || statefulSetName == "") throw new Exception("statefulset statefulSetName is null or empty");
-//        if(bodyToPatch == null) throw new Exception("Nothing to patch");
-//
-//        AppsV1Api apiInstance = new AppsV1Api(apiClient);
-//        String pretty = "true";
-//
-//        try {
-//            V1Scale result = apiInstance.patchNamespacedStatefulSetScale(
-//                    statefulSetName, namespace, bodyToPatch, pretty, null);
-//
-//            int statusCheckCount = 0;
-//            StatefulSetStatus status = null;
-//            while(statusCheckCount < 60) {
-//                status = getStatefulSetStatus();
-//                if(status.getReadyReplicas() == status.getReplicas()) break;
-//
-//                Thread.sleep(5000);
-//            }
-//
-//            if(status == null || status.getReadyReplicas() != status.getReplicas())
-//                throw new Exception("statefulset nodes are not ready yet or there is no status on that yet");
-//
-//            return result.toString();
-//        } catch (ApiException e) {
-//            LOGGER.error(e.getResponseBody());
-//            return e.getLocalizedMessage();
-//        }
-//    }
 }
