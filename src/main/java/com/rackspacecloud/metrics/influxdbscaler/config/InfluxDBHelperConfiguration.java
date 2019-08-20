@@ -7,6 +7,7 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,10 +17,16 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Collections;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Configuration
 @EnableConfigurationProperties(RestTemplateConfigurationProperties.class)
 public class InfluxDBHelperConfiguration {
+
+    @Value("${statefuleset-stats-caller-threads-count}")
+    private int statefulsetStatsCallerThreadsCount;
+
     @Autowired
     RestTemplateConfigurationProperties config;
 
@@ -65,7 +72,12 @@ public class InfluxDBHelperConfiguration {
 
     @Bean
     @Autowired
-    public InfluxDBHelper influxDBHelper(RestTemplate restTemplate) {
-        return new InfluxDBHelper(restTemplate);
+    public InfluxDBHelper influxDBHelper(RestTemplate restTemplate, ExecutorService executorService) {
+        return new InfluxDBHelper(restTemplate, executorService);
+    }
+
+    @Bean
+    public ExecutorService executorService() {
+        return Executors.newFixedThreadPool(statefulsetStatsCallerThreadsCount);
     }
 }

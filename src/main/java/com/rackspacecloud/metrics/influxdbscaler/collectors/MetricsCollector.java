@@ -5,6 +5,8 @@ import com.rackspacecloud.metrics.influxdbscaler.models.StatsResults;
 import com.rackspacecloud.metrics.influxdbscaler.models.routing.InfluxDBInstance;
 import com.rackspacecloud.metrics.influxdbscaler.providers.InfluxDBInstancesUpdater;
 import com.rackspacecloud.metrics.influxdbscaler.providers.StatefulSetProvider;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.influxdb.InfluxDB;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +29,9 @@ public class MetricsCollector {
      * contain all of the metrics data from InfluxDB stateful instances.
      */
     private InfluxDBFactory influxDBFactory;
+    private MeterRegistry registry;
+    private Timer influxdbStatsCollectionTimer;
+    private Timer minSeriesCountInstanceTimer;
     private String localMetricsUrl;
     private String localMetricsDatabase;
     private String localMetricsRetPolicy;
@@ -46,6 +51,7 @@ public class MetricsCollector {
             StatefulSetProvider statefulSetProvider,
             InfluxDBInstancesUpdater updater,
             InfluxDBFactory influxDBFactory,
+            MeterRegistry registry,
             String localMetricsUrl,
             String localMetricsDatabase,
             String localMetricsRetPolicy) {
@@ -56,6 +62,9 @@ public class MetricsCollector {
         this.localMetricsDatabase = localMetricsDatabase;
         this.localMetricsRetPolicy = localMetricsRetPolicy;
         this.influxDBFactory = influxDBFactory;
+        this.registry = registry;
+        this.influxdbStatsCollectionTimer = this.registry.timer("influxdb.stats.collection.time");
+        this.minSeriesCountInstanceTimer = this.registry.timer("influxdb.min.series.count.instance");
 
         influxDBInstances = this.updater.update(statefulSetProvider);
 
@@ -80,9 +89,12 @@ public class MetricsCollector {
         LOGGER.info("> start");
         LOGGER.info("Current time {}", Instant.now());
 
+        long statsCollectionStart = System.currentTimeMillis();
         // seriesMetricCollection collects all of the stats for given InfluxDB instances using "show stats" api
         Map<String, StatsResults.SeriesMetric[]> seriesMetricCollection =
                 influxDBHelper.getSeriesMetricCollection(instancesStats.keySet());
+
+        influxdbStatsCollectionTimer.record(System.currentTimeMillis() - statsCollectionStart, TimeUnit.MILLISECONDS);
 
         List<String> lineProtocoledCollection = new ArrayList<>();
         for(String instance : seriesMetricCollection.keySet()) {
@@ -140,6 +152,12 @@ public class MetricsCollector {
      * @throws Exception
      */
     public synchronized String getMinSeriesCountInstance() throws Exception {
-        return influxDBHelper.getMinInstance(getInfluxDBInstanceUrls());
+        long minSearchStart = System.currentTimeMillis();
+
+        String minInstance = influxDBHelper.getMinInstance(getInfluxDBInstanceUrls());
+
+        minSeriesCountInstanceTimer.record(System.currentTimeMillis() - minSearchStart, TimeUnit.MILLISECONDS);
+
+        return minInstance;
     }
 }

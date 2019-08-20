@@ -9,16 +9,22 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 public class InfluxDBHelper {
     private final static String SHOW_STATS = "q=SHOW STATS";
     private RestTemplate restTemplate;
+    private ExecutorService executorService;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(InfluxDBHelper.class);
 
     @Autowired
-    public InfluxDBHelper(RestTemplate restTemplate){
+    public InfluxDBHelper(RestTemplate restTemplate, ExecutorService executorService){
         this.restTemplate = restTemplate;
+        this.executorService = executorService;
     }
 
     /**
@@ -32,18 +38,12 @@ public class InfluxDBHelper {
 
         String minInstance = "";
 
-        for(String url : influxDBInstances) {
-            // Get all of the stats for given InfluxDB instance
-            StatsResults result = getResponseEntity(url, SHOW_STATS);
+        ConcurrentMap<String, StatsResults.SeriesMetric[]> seriesMetricCollection =
+                getSeriesMetricCollection(influxDBInstances);
 
+        for(String url : seriesMetricCollection.keySet()) {
             try {
-                StatsResults.StatsResult[] statsResults = result.getResults();
-
-                if (statsResults.length != 1) throw new Exception("Either no result or more than 1 result found.");
-
-                StatsResults.SeriesMetric[] seriesMetricCollection = statsResults[0].getSeries();
-
-                long totalSeriesCount = getTotalSeriesCount(seriesMetricCollection);
+                long totalSeriesCount = getTotalSeriesCount(seriesMetricCollection.get(url));
 
                 if(totalSeriesCount < minSeriesCount) {
                     minInstance = url;
@@ -57,27 +57,30 @@ public class InfluxDBHelper {
         return minInstance;
     }
 
-    public Map<String, StatsResults.SeriesMetric[]> getSeriesMetricCollection(
+    public ConcurrentMap<String, StatsResults.SeriesMetric[]> getSeriesMetricCollection(
             final Collection<String> instances) throws Exception {
 
-        Map<String, StatsResults.SeriesMetric[]> seriesMetricCollectionMap = new HashMap<>();
+        ConcurrentMap<String, StatsResults.SeriesMetric[]> seriesMetricCollectionMap = new ConcurrentHashMap<>();
 
+        ConcurrentMap<String, Future<StatsResults>> futureResults = new ConcurrentHashMap<>();
+
+        // Query InfluxDB instance stats for ALL of the instances concurrently
         for(String baseUrl : instances) {
-            // Get all of the stats for given InfluxDB instance
-            StatsResults result = getResponseEntity(baseUrl, SHOW_STATS);
+            futureResults.put(baseUrl, executorService.submit(() -> getResponseEntity(baseUrl, SHOW_STATS)));
+        }
 
+        for(Map.Entry<String, Future<StatsResults>> result : futureResults.entrySet()) {
             try {
-                StatsResults.StatsResult[] statsResults = result.getResults();
+                StatsResults.StatsResult[] statsResults = result.getValue().get().getResults();
 
                 if (statsResults.length != 1) throw new Exception("Either no result or more than 1 result found.");
 
                 StatsResults.SeriesMetric[] seriesMetricCollection = statsResults[0].getSeries();
-                seriesMetricCollectionMap.put(baseUrl, seriesMetricCollection);
+                seriesMetricCollectionMap.put(result.getKey(), seriesMetricCollection);
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
-
         return seriesMetricCollectionMap;
     }
 

@@ -16,6 +16,8 @@ import org.springframework.web.client.RestTemplate;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static org.mockito.Mockito.when;
 
@@ -27,18 +29,32 @@ public class InfluxDBHelperTests {
 	@Mock
 	RestTemplate restTemplateMock;
 
+	@Mock
+	ExecutorService executorServiceMock;
+
 	@MockBean
 	StatefulSetProvider statefulSetProviderMock;
 
 	@Before
 	public void setUp() {
+		executorServiceMock = Executors.newFixedThreadPool(5);
 	}
 
 	@Test
 	public void givenInfluxdbInstances_getMinInstance_successfully() throws Exception {
 		String[] instanceUrls = getInstanceUrls();
 
-		InfluxDBHelper influxDBHelper = new InfluxDBHelper(restTemplateMock);
+		InfluxDBHelper influxDBHelper = new InfluxDBHelper(restTemplateMock, executorServiceMock);
+
+		String url1 = String.format("%s/query?%s", instanceUrls[0], SHOW_STATS);
+		when(restTemplateMock.getForObject(url1, StatsResults.class))
+				.thenReturn(getDummyStatsResults(74L, 77L));
+
+		String url2 = String.format("%s/query?%s", instanceUrls[1], SHOW_STATS);
+		when(restTemplateMock.getForObject(url2, StatsResults.class))
+				.thenReturn(getDummyStatsResults(64L, 67L));
+
+
 		String minInstance = influxDBHelper.getMinInstance(Arrays.asList(instanceUrls));
 
 		Assert.assertEquals("Failed to find min instance url.", instanceUrls[1], minInstance);
@@ -60,7 +76,7 @@ public class InfluxDBHelperTests {
 	public void givenInfluxdbInstances_getSeriesMetricCollection_successfully() throws Exception {
 		String[] instanceUrls = getInstanceUrls();
 
-		InfluxDBHelper influxDBHelper = new InfluxDBHelper(restTemplateMock);
+		InfluxDBHelper influxDBHelper = new InfluxDBHelper(restTemplateMock, executorServiceMock);
 
 		Map<String, StatsResults.SeriesMetric[]> metricCollectionMap =
 				influxDBHelper.getSeriesMetricCollection(new HashSet<>(Arrays.asList(instanceUrls)));

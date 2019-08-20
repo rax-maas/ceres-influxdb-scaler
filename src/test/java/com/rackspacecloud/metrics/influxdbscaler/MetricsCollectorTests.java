@@ -4,7 +4,6 @@ import com.rackspacecloud.metrics.influxdbscaler.collectors.InfluxDBFactory;
 import com.rackspacecloud.metrics.influxdbscaler.collectors.InfluxDBHelper;
 import com.rackspacecloud.metrics.influxdbscaler.collectors.MetricsCollector;
 import com.rackspacecloud.metrics.influxdbscaler.models.StatsResults;
-import com.rackspacecloud.metrics.influxdbscaler.providers.InfluxDBInstancesUpdater;
 import com.rackspacecloud.metrics.influxdbscaler.providers.StatefulSetProvider;
 import org.influxdb.InfluxDB;
 import org.junit.Assert;
@@ -18,9 +17,8 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.junit4.SpringRunner;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 
 import static org.mockito.Mockito.*;
@@ -50,7 +48,7 @@ public class MetricsCollectorTests {
     public void verify_collectInfluxDBMetrics_writesToInfluxDB() throws Exception {
         String[] instanceUrls = new String[] {"http://localhost:8086", "http://localhost:8087"};
 
-        Map<String, StatsResults.SeriesMetric[]> seriesMetricMap = new HashMap<>();
+        ConcurrentMap<String, StatsResults.SeriesMetric[]> seriesMetricMap = new ConcurrentHashMap<>();
 
         seriesMetricMap.put(instanceUrls[0], getSeriesMetricsMap(74L, 77L));
         seriesMetricMap.put(instanceUrls[1], getSeriesMetricsMap(54L, 57L));
