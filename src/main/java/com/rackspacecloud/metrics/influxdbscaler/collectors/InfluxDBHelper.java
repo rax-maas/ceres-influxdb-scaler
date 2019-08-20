@@ -9,6 +9,8 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
@@ -36,7 +38,8 @@ public class InfluxDBHelper {
 
         String minInstance = "";
 
-        Map<String, StatsResults.SeriesMetric[]> seriesMetricCollection = getSeriesMetricCollection(influxDBInstances);
+        ConcurrentMap<String, StatsResults.SeriesMetric[]> seriesMetricCollection =
+                getSeriesMetricCollection(influxDBInstances);
 
         for(String url : seriesMetricCollection.keySet()) {
             try {
@@ -54,11 +57,12 @@ public class InfluxDBHelper {
         return minInstance;
     }
 
-    public Map<String, StatsResults.SeriesMetric[]> getSeriesMetricCollection(
+    public ConcurrentMap<String, StatsResults.SeriesMetric[]> getSeriesMetricCollection(
             final Collection<String> instances) throws Exception {
-        Map<String, StatsResults.SeriesMetric[]> seriesMetricCollectionMap = new HashMap<>();
 
-        Map<String, Future<StatsResults>> futureResults = new HashMap<>();
+        ConcurrentMap<String, StatsResults.SeriesMetric[]> seriesMetricCollectionMap = new ConcurrentHashMap<>();
+
+        ConcurrentMap<String, Future<StatsResults>> futureResults = new ConcurrentHashMap<>();
 
         // Query InfluxDB instance stats for ALL of the instances concurrently
         for(String baseUrl : instances) {
