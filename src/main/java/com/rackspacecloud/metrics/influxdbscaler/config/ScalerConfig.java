@@ -7,6 +7,7 @@ import com.rackspacecloud.metrics.influxdbscaler.models.StatefulSetStatus;
 import com.rackspacecloud.metrics.influxdbscaler.models.routing.InfluxDBInstance;
 import com.rackspacecloud.metrics.influxdbscaler.providers.InfluxDBInstancesUpdater;
 import com.rackspacecloud.metrics.influxdbscaler.providers.StatefulSetProvider;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -94,12 +95,14 @@ public class ScalerConfig {
             InfluxDBHelper influxDBHelper,
             StatefulSetProvider statefulSetProvider,
             InfluxDBInstancesUpdater updater,
-            InfluxDBFactory influxDBFactory) {
+            InfluxDBFactory influxDBFactory,
+            MeterRegistry registry) {
         return new MetricsCollector(
                 influxDBHelper,
                 statefulSetProvider,
                 updater,
                 influxDBFactory,
+                registry,
                 localMetricsUrl,
                 localMetricsDatabase,
                 localMetricsRetPolicy

@@ -38,7 +38,7 @@ public class InfluxDBHelperTests {
 	public void givenInfluxdbInstances_getMinInstance_successfully() throws Exception {
 		String[] instanceUrls = getInstanceUrls();
 
-		InfluxDBHelper influxDBHelper = new InfluxDBHelper(restTemplateMock);
+		InfluxDBHelper influxDBHelper = new InfluxDBHelper(restTemplateMock, null);
 		String minInstance = influxDBHelper.getMinInstance(Arrays.asList(instanceUrls));
 
 		Assert.assertEquals("Failed to find min instance url.", instanceUrls[1], minInstance);
@@ -60,7 +60,7 @@ public class InfluxDBHelperTests {
 	public void givenInfluxdbInstances_getSeriesMetricCollection_successfully() throws Exception {
 		String[] instanceUrls = getInstanceUrls();
 
-		InfluxDBHelper influxDBHelper = new InfluxDBHelper(restTemplateMock);
+		InfluxDBHelper influxDBHelper = new InfluxDBHelper(restTemplateMock, null);
 
 		Map<String, StatsResults.SeriesMetric[]> metricCollectionMap =
 				influxDBHelper.getSeriesMetricCollection(new HashSet<>(Arrays.asList(instanceUrls)));
