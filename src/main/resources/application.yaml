@@ -1,6 +1,14 @@
 server:
   port: 8083
 
+
+logging:
+  level:
+    com.rackspacecloud: debug
+    org.springframework:
+      web: info
+    okhttp3: warn
+
 ---
 spring:
   profiles: development
@@ -85,6 +93,13 @@ kubernetes:
   namespace: ${KUBERNETES_NAMESPACE}
   statefulset-name: ${KUBERNETES_STATEFULSET_NAME}
   headless-service-name: ${KUBERNETES_HEADLESS_SERVICE_NAME}
+
+logging:
+  level:
+    com.rackspacecloud: info
+    org.springframework:
+      web: info
+    okhttp3: warn
 
 management:
   endpoints:

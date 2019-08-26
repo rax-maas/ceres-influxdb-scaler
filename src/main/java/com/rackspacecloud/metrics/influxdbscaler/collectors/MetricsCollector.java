@@ -7,9 +7,8 @@ import com.rackspacecloud.metrics.influxdbscaler.providers.InfluxDBInstancesUpda
 import com.rackspacecloud.metrics.influxdbscaler.providers.StatefulSetProvider;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import lombok.extern.slf4j.Slf4j;
 import org.influxdb.InfluxDB;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.time.Instant;
@@ -19,22 +18,15 @@ import java.util.concurrent.TimeUnit;
 /**
  * This class collects all of the metrics from the InfluxDB instances
  */
+@Slf4j
 public class MetricsCollector {
-    private static final Logger LOGGER = LoggerFactory.getLogger(MetricsCollector.class);
 
-    /**
-     * 'influxDB' is responsible for writing InfluxDB stateful instances metrics data into
-     * the local metrics database.
-     * 'localMetricsDatabase' database and 'localMetricsRetPolicy' retention policy
-     * contain all of the metrics data from InfluxDB stateful instances.
-     */
-    private InfluxDBFactory influxDBFactory;
     private MeterRegistry registry;
     private Timer influxdbStatsCollectionTimer;
     private Timer minSeriesCountInstanceTimer;
-    private String localMetricsUrl;
     private String localMetricsDatabase;
     private String localMetricsRetPolicy;
+    private InfluxDB influxDBCeresWriter;
 
     /**
      * instancesStats collects all of the stats for given InfluxDB instance using "show stats" api
@@ -58,15 +50,15 @@ public class MetricsCollector {
 
         this.influxDBHelper = influxDBHelper;
         this.updater = updater;
-        this.localMetricsUrl = localMetricsUrl;
         this.localMetricsDatabase = localMetricsDatabase;
         this.localMetricsRetPolicy = localMetricsRetPolicy;
-        this.influxDBFactory = influxDBFactory;
         this.registry = registry;
         this.influxdbStatsCollectionTimer = this.registry.timer("influxdb.stats.collection.time");
         this.minSeriesCountInstanceTimer = this.registry.timer("influxdb.min.series.count.instance");
 
         influxDBInstances = this.updater.update(statefulSetProvider);
+
+        this.influxDBCeresWriter = influxDBFactory.getInfluxDB(localMetricsUrl);
 
         instancesStats = new HashMap<>();
 
@@ -86,8 +78,8 @@ public class MetricsCollector {
      */
     @Scheduled(cron = "${cron-config}") // Run every 60 seconds
     public void collectInfluxDBMetrics() throws Exception {
-        LOGGER.info("> start");
-        LOGGER.info("Current time {}", Instant.now());
+        log.debug("> start");
+        log.debug("Current time {}", Instant.now());
 
         long statsCollectionStart = System.currentTimeMillis();
         // seriesMetricCollection collects all of the stats for given InfluxDB instances using "show stats" api
@@ -110,12 +102,10 @@ public class MetricsCollector {
 
         String metricsToPublish = String.join("\n", lineProtocoledCollection);
 
-        InfluxDB influxDB = influxDBFactory.getInfluxDB(localMetricsUrl);
-
-        influxDB.write(localMetricsDatabase, localMetricsRetPolicy,
+        influxDBCeresWriter.write(localMetricsDatabase, localMetricsRetPolicy,
                 InfluxDB.ConsistencyLevel.ONE, TimeUnit.SECONDS, metricsToPublish);
 
-        LOGGER.info("< end");
+        log.debug("< end");
     }
 
     private List<InfluxDBMetricsCollection.InfluxDBMetrics> getTotalSeriesCount(
