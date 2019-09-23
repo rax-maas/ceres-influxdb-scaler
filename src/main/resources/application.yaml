@@ -96,7 +96,7 @@ kubernetes:
 
 logging:
   level:
-    com.rackspacecloud: info
+    com.rackspacecloud: debug
     org.springframework:
       web: info
     okhttp3: warn
