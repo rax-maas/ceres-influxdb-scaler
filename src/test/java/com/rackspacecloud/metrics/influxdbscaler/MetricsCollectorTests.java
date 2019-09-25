@@ -57,6 +57,7 @@ public class MetricsCollectorTests {
         when(influxDBFactoryMock.getInfluxDB("http://localhost:8086")).thenReturn(influxDBMock);
 
         MetricsCollector metricsCollector = context.getBean(MetricsCollector.class);
+        metricsCollector.setInfluxDBCeresWriter(influxDBMock);
 
         doReturn(seriesMetricMap)
                 .when(influxDBHelperMock).getSeriesMetricCollection(metricsCollector.getInfluxDBInstanceUrls());

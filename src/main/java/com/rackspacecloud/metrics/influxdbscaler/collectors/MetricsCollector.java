@@ -58,7 +58,7 @@ public class MetricsCollector {
 
         influxDBInstances = this.updater.update(statefulSetProvider);
 
-        this.influxDBCeresWriter = influxDBFactory.getInfluxDB(localMetricsUrl);
+        setInfluxDBCeresWriter(influxDBFactory.getInfluxDB(localMetricsUrl));
 
         instancesStats = new HashMap<>();
 
@@ -66,6 +66,10 @@ public class MetricsCollector {
             String url = item.getUrl();
             instancesStats.put(url, new ArrayList<>());
         });
+    }
+
+    public void setInfluxDBCeresWriter(InfluxDB influxDB) {
+        this.influxDBCeresWriter = influxDB;
     }
 
     public Set<String> getInfluxDBInstanceUrls() {
