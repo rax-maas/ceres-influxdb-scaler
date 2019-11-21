@@ -49,11 +49,9 @@ public class ScalerConfig {
     public InfluxDBInstancesUpdater updater() {
         return statefulSetProvider -> {
             InfluxDBInstance instance1 = new InfluxDBInstance("influxdb-0", "http://localhost:8086");
-            InfluxDBInstance instance2 = new InfluxDBInstance("influxdb-1", "http://localhost:8087");
 
             List<InfluxDBInstance> instances = new ArrayList<>();
             instances.add(instance1);
-            instances.add(instance2);
 
             return instances;
         };
