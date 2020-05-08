@@ -1,8 +1,15 @@
 package com.rackspacecloud.metrics.influxdbscaler;
 
+import static org.mockito.Mockito.when;
+
 import com.rackspacecloud.metrics.influxdbscaler.collectors.InfluxDBHelper;
 import com.rackspacecloud.metrics.influxdbscaler.models.StatsResults;
 import com.rackspacecloud.metrics.influxdbscaler.providers.StatefulSetProvider;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -10,19 +17,13 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-import static org.mockito.Mockito.when;
-
 @RunWith(SpringRunner.class)
 @SpringBootTest
+@ActiveProfiles("development")
 public class InfluxDBHelperTests {
 	private final static String SHOW_STATS = "q=SHOW STATS";
 
