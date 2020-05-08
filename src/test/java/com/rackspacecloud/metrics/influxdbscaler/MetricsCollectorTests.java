@@ -1,10 +1,18 @@
 package com.rackspacecloud.metrics.influxdbscaler;
 
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.rackspacecloud.metrics.influxdbscaler.collectors.InfluxDBFactory;
 import com.rackspacecloud.metrics.influxdbscaler.collectors.InfluxDBHelper;
 import com.rackspacecloud.metrics.influxdbscaler.collectors.MetricsCollector;
 import com.rackspacecloud.metrics.influxdbscaler.models.StatsResults;
 import com.rackspacecloud.metrics.influxdbscaler.providers.StatefulSetProvider;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import org.influxdb.InfluxDB;
 import org.junit.Assert;
 import org.junit.Before;
@@ -15,16 +23,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.ApplicationContext;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit4.SpringRunner;
-
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
-
-import static org.mockito.Mockito.*;
 
 @RunWith(SpringRunner.class)
 @SpringBootTest
+@ActiveProfiles("development")
 public class MetricsCollectorTests {
 	private final static String SHOW_STATS = "q=SHOW STATS";
 
